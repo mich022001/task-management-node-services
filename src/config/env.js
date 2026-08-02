@@ -56,6 +56,8 @@ const environmentSchema = z.object({
   SMTP_FROM_NAME: z.string().trim().min(1).default('Task Management Platform'),
 
   SMTP_FROM_EMAIL: z.email().default('no-reply@example.com'),
+
+  CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 const validationResult = environmentSchema.safeParse(process.env);
