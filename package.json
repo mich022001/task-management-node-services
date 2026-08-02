@@ -41,6 +41,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "axios-mock-adapter": "^2.1.0",
     "eslint": "^9.34.0",
     "globals": "^17.8.0",
     "jest": "^30.1.3",

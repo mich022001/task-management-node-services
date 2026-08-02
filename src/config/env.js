@@ -37,6 +37,34 @@ const environmentSchema = z.object({
       'silent',
     ])
     .default('info'),
+
+  LARAVEL_INTERNAL_API_URL: z
+    .url()
+    .default('http://localhost:8000/api/v1/internal'),
+
+  LARAVEL_SERVICE_KEY: z
+    .string()
+    .trim()
+    .min(32, 'LARAVEL_SERVICE_KEY must contain at least 32 characters.'),
+
+  LARAVEL_TIMEOUT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5000),
+
+  LARAVEL_RETRY_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .default(2),
+
+  LARAVEL_RETRY_DELAY: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(300),
 });
 
 const validationResult = environmentSchema.safeParse(process.env);
