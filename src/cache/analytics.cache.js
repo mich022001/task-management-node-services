@@ -43,7 +43,11 @@ export class AnalyticsCache {
   }
 
   clear() {
+    const removedEntries = this.entries.size;
+
     this.entries.clear();
+
+    return removedEntries;
   }
 
   size() {
@@ -58,12 +62,16 @@ export class AnalyticsCache {
 
   removeExpiredEntries() {
     const currentTime = this.now();
+    let removedEntries = 0;
 
     for (const [key, entry] of this.entries.entries()) {
       if (entry.expiresAt <= currentTime) {
         this.entries.delete(key);
+        removedEntries += 1;
       }
     }
+
+    return removedEntries;
   }
 }
 
@@ -82,7 +90,11 @@ export function deleteCachedAnalytics(key) {
 }
 
 export function clearAnalyticsCache() {
-  analyticsCache.clear();
+  return analyticsCache.clear();
+}
+
+export function removeExpiredAnalyticsCacheEntries() {
+  return analyticsCache.removeExpiredEntries();
 }
 
 export function getAnalyticsCacheSize() {

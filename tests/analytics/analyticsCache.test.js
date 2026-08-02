@@ -176,4 +176,57 @@ describe('Analytics cache', () => {
     expect(analyticsCache.has('analytics:exists')).toBe(true);
     expect(analyticsCache.has('analytics:missing')).toBe(false);
   });
+  test('returns the number of expired entries removed', () => {
+    let currentTime = 0;
+
+    const cache = new AnalyticsCache({
+      ttlSeconds: 10,
+      now: () => currentTime,
+    });
+
+    cache.set(
+      'expired-one',
+      {
+        value: 1,
+      },
+      1,
+    );
+
+    cache.set(
+      'expired-two',
+      {
+        value: 2,
+      },
+      2,
+    );
+
+    cache.set(
+      'active',
+      {
+        value: 3,
+      },
+      10,
+    );
+
+    currentTime = 3_000;
+
+    expect(cache.removeExpiredEntries()).toBe(2);
+    expect(cache.size()).toBe(1);
+    expect(cache.has('active')).toBe(true);
+  });
+
+  test('clear returns the number of removed entries', () => {
+    const cache = new AnalyticsCache();
+
+    cache.set('first', {
+      value: 1,
+    });
+
+    cache.set('second', {
+      value: 2,
+    });
+
+    expect(cache.clear()).toBe(2);
+    expect(cache.size()).toBe(0);
+  });
 });

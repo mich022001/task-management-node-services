@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '../config/logger.js';
 
+const removableStatuses = new Set(['completed', 'failed']);
+
 export class NotificationQueue {
   constructor({
     processor = null,
@@ -14,6 +16,7 @@ export class NotificationQueue {
     this.logger = loggerInstance;
     this.autoProcess = autoProcess;
     this.processingPromise = null;
+    this.acceptingJobs = true;
   }
 
   setProcessor(processor) {
@@ -25,6 +28,10 @@ export class NotificationQueue {
   }
 
   enqueue(payload) {
+    if (!this.acceptingJobs) {
+      throw new Error('Notification queue is not accepting new jobs.');
+    }
+
     const timestamp = new Date().toISOString();
 
     const job = {
@@ -136,6 +143,58 @@ export class NotificationQueue {
     }
   }
 
+  stopAcceptingJobs() {
+    this.acceptingJobs = false;
+  }
+
+  startAcceptingJobs() {
+    this.acceptingJobs = true;
+  }
+
+  isAcceptingJobs() {
+    return this.acceptingJobs;
+  }
+
+  async waitForIdle() {
+    if (this.processingPromise) {
+      await this.processingPromise;
+    }
+  }
+
+  removeFinishedJobs({ olderThan = null } = {}) {
+    const cutoffTime =
+      olderThan === null
+        ? null
+        : olderThan instanceof Date
+          ? olderThan.getTime()
+          : new Date(olderThan).getTime();
+
+    if (cutoffTime !== null && Number.isNaN(cutoffTime)) {
+      throw new TypeError('Cleanup cutoff must be a valid date.');
+    }
+
+    let removedJobs = 0;
+
+    for (const [jobId, job] of this.jobs.entries()) {
+      if (!removableStatuses.has(job.status)) {
+        continue;
+      }
+
+      if (cutoffTime !== null) {
+        const processedTime = new Date(job.processed_at).getTime();
+
+        if (Number.isNaN(processedTime) || processedTime > cutoffTime) {
+          continue;
+        }
+      }
+
+      this.jobs.delete(jobId);
+      removedJobs += 1;
+    }
+
+    return removedJobs;
+  }
+
   getQueueSize() {
     return this.pendingJobIds.length;
   }
@@ -157,8 +216,12 @@ export class NotificationQueue {
       );
     }
 
+    const removedJobs = this.jobs.size;
+
     this.pendingJobIds = [];
     this.jobs.clear();
+
+    return removedJobs;
   }
 
   cloneJob(job) {
@@ -180,10 +243,34 @@ export function processQueue() {
   return notificationQueue.processQueue();
 }
 
+export function stopAcceptingNotificationJobs() {
+  notificationQueue.stopAcceptingJobs();
+}
+
+export function startAcceptingNotificationJobs() {
+  notificationQueue.startAcceptingJobs();
+}
+
+export function isNotificationQueueAcceptingJobs() {
+  return notificationQueue.isAcceptingJobs();
+}
+
+export function waitForNotificationQueueIdle() {
+  return notificationQueue.waitForIdle();
+}
+
+export function removeFinishedNotificationJobs(options) {
+  return notificationQueue.removeFinishedJobs(options);
+}
+
 export function getQueueSize() {
   return notificationQueue.getQueueSize();
 }
 
 export function getNotificationJob(jobId) {
   return notificationQueue.getJob(jobId);
+}
+
+export function getNotificationJobs() {
+  return notificationQueue.getJobs();
 }

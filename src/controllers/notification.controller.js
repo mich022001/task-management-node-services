@@ -1,13 +1,9 @@
 import { AppError } from '../errors/AppError.js';
 import {
-  configureNotificationProcessor,
   enqueueNotification,
   processQueue,
 } from '../queues/notification.queue.js';
-import { processNotification } from '../services/notification.service.js';
 import { validateNotification } from '../validation/notification.schema.js';
-
-configureNotificationProcessor(processNotification);
 
 function formatValidationErrors(issues) {
   return issues.reduce((errors, issue) => {

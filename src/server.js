@@ -1,15 +1,35 @@
 import app from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import {
+  startBackgroundServices,
+  stopBackgroundServices,
+} from './runtime/backgroundServices.js';
+import { createShutdownHandler } from './runtime/shutdown.js';
 
 const server = app.listen(env.PORT, () => {
-  logger.info(
-    {
-      port: env.PORT,
-      environment: env.NODE_ENV,
-    },
-    `Node.js service running at http://localhost:${env.PORT}`,
-  );
+  try {
+    startBackgroundServices();
+
+    logger.info(
+      {
+        port: env.PORT,
+        environment: env.NODE_ENV,
+      },
+      `Node.js service running at http://localhost:${env.PORT}`,
+    );
+  } catch (error) {
+    logger.fatal(
+      {
+        error,
+      },
+      'Failed to start background services.',
+    );
+
+    server.close(() => {
+      process.exit(1);
+    });
+  }
 });
 
 server.on('error', (error) => {
@@ -23,46 +43,18 @@ server.on('error', (error) => {
   process.exit(1);
 });
 
-let isShuttingDown = false;
+const shutdown = createShutdownHandler({
+  server,
+  stopBackgroundServices,
+});
 
-function shutdown(signal) {
-  if (isShuttingDown) {
-    return;
-  }
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
 
-  isShuttingDown = true;
-
-  logger.info(
-    {
-      signal,
-    },
-    'Shutdown signal received. Closing HTTP server.',
-  );
-
-  server.close((error) => {
-    if (error) {
-      logger.error(
-        {
-          error,
-        },
-        'Failed to close HTTP server cleanly.',
-      );
-
-      process.exit(1);
-    }
-
-    logger.info('HTTP server closed successfully.');
-    process.exit(0);
-  });
-
-  setTimeout(() => {
-    logger.error('Forced shutdown after timeout.');
-    process.exit(1);
-  }, 10_000).unref();
-}
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
 
 process.on('uncaughtException', (error) => {
   logger.fatal(
@@ -72,7 +64,7 @@ process.on('uncaughtException', (error) => {
     'Uncaught exception.',
   );
 
-  shutdown('uncaughtException');
+  void shutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason) => {
@@ -83,5 +75,5 @@ process.on('unhandledRejection', (reason) => {
     'Unhandled promise rejection.',
   );
 
-  shutdown('unhandledRejection');
+  void shutdown('unhandledRejection');
 });
