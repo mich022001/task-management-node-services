@@ -6,12 +6,7 @@ export function sleep(milliseconds) {
 
 export async function retry(
   operation,
-  {
-    retries = 2,
-    delay = 300,
-    shouldRetry = () => true,
-    onRetry,
-  } = {},
+  { retries = 2, delay = 300, shouldRetry = () => true, onRetry } = {},
 ) {
   let attempt = 0;
 
@@ -19,9 +14,7 @@ export async function retry(
     try {
       return await operation(attempt);
     } catch (error) {
-      const canRetry =
-        attempt < retries
-        && shouldRetry(error);
+      const canRetry = attempt < retries && shouldRetry(error);
 
       if (!canRetry) {
         throw error;

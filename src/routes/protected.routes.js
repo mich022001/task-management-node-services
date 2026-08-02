@@ -25,19 +25,14 @@ router.get('/profile', authenticate, (req, res) => {
   });
 });
 
-router.get(
-  '/admin',
-  authenticate,
-  authorizeRoles('admin'),
-  (req, res) => {
-    return res.status(200).json({
-      message: 'Admin endpoint accessed successfully.',
-      data: {
-        user: serializeUser(req.user),
-      },
-    });
-  },
-);
+router.get('/admin', authenticate, authorizeRoles('admin'), (req, res) => {
+  return res.status(200).json({
+    message: 'Admin endpoint accessed successfully.',
+    data: {
+      user: serializeUser(req.user),
+    },
+  });
+});
 
 router.get(
   '/management',

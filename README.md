@@ -258,9 +258,7 @@ Validation-related errors may also include:
   "message": "Validation failed.",
   "code": "VALIDATION_ERROR",
   "errors": {
-    "field": [
-      "The field is invalid."
-    ]
+    "field": ["The field is invalid."]
   }
 }
 ```

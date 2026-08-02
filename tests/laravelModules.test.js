@@ -1,18 +1,9 @@
 import AxiosMockAdapter from 'axios-mock-adapter';
 
 import { checkLaravelHealth } from '../src/clients/laravel/healthClient.js';
-import {
-  getUser,
-  getUsers,
-} from '../src/clients/laravel/userClient.js';
-import {
-  getTeam,
-  getTeams,
-} from '../src/clients/laravel/teamClient.js';
-import {
-  getTask,
-  getTasks,
-} from '../src/clients/laravel/taskClient.js';
+import { getUser, getUsers } from '../src/clients/laravel/userClient.js';
+import { getTeam, getTeams } from '../src/clients/laravel/teamClient.js';
+import { getTask, getTasks } from '../src/clients/laravel/taskClient.js';
 import { laravelAxios } from '../src/clients/laravel/laravelClient.js';
 
 describe('Laravel internal API modules', () => {

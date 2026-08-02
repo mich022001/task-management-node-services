@@ -1,10 +1,7 @@
 import request from 'supertest';
 
 import app from '../src/app.js';
-import {
-  createExpiredToken,
-  createToken,
-} from './helpers/jwt.js';
+import { createExpiredToken, createToken } from './helpers/jwt.js';
 
 describe('JWT authentication middleware', () => {
   test('rejects a request without a token', async () => {
@@ -107,8 +104,6 @@ describe('JWT authentication middleware', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(401);
 
-    expect(response.body.code).toBe(
-      'INVALID_TOKEN_PAYLOAD',
-    );
+    expect(response.body.code).toBe('INVALID_TOKEN_PAYLOAD');
   });
 });

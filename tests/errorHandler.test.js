@@ -9,8 +9,7 @@ describe('Error handling', () => {
       .expect(404);
 
     expect(response.body).toEqual({
-      message:
-        'Route not found: GET /api/v1/does-not-exist',
+      message: 'Route not found: GET /api/v1/does-not-exist',
     });
   });
 

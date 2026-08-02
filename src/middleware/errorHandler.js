@@ -30,8 +30,7 @@ export function errorHandler(error, req, res, _next) {
         ? 'Internal server error.'
         : error.message || 'Internal server error.',
     code:
-      error.code ||
-      (isServerError ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR'),
+      error.code || (isServerError ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR'),
   };
 
   if (error.errors !== undefined) {

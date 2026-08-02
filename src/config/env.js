@@ -10,16 +10,9 @@ const environmentSchema = z.object({
     .enum(['development', 'test', 'production'])
     .default('development'),
 
-  PORT: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(65535)
-    .default(3000),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
-  FRONTEND_URL: z
-    .url()
-    .default('http://localhost:5173'),
+  FRONTEND_URL: z.url().default('http://localhost:5173'),
 
   JWT_SECRET: z
     .string()
@@ -27,16 +20,10 @@ const environmentSchema = z.object({
     .min(32, 'JWT_SECRET must contain at least 32 characters.'),
 
   LOG_LEVEL: z
-    .enum([
-      'fatal',
-      'error',
-      'warn',
-      'info',
-      'debug',
-      'trace',
-      'silent',
-    ])
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+
+  LARAVEL_API_URL: z.url().default('http://localhost:8000/api/v1'),
 
   LARAVEL_INTERNAL_API_URL: z
     .url()
@@ -47,24 +34,11 @@ const environmentSchema = z.object({
     .trim()
     .min(32, 'LARAVEL_SERVICE_KEY must contain at least 32 characters.'),
 
-  LARAVEL_TIMEOUT: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(5000),
+  LARAVEL_TIMEOUT: z.coerce.number().int().positive().default(5000),
 
-  LARAVEL_RETRY_ATTEMPTS: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(10)
-    .default(2),
+  LARAVEL_RETRY_ATTEMPTS: z.coerce.number().int().min(0).max(10).default(2),
 
-  LARAVEL_RETRY_DELAY: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(300),
+  LARAVEL_RETRY_DELAY: z.coerce.number().int().min(0).default(300),
 });
 
 const validationResult = environmentSchema.safeParse(process.env);

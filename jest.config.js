@@ -4,8 +4,5 @@ export default {
   clearMocks: true,
   restoreMocks: true,
   verbose: true,
-  collectCoverageFrom: [
-    'src/**/*.js',
-    '!src/server.js',
-  ],
+  collectCoverageFrom: ['src/**/*.js', '!src/server.js'],
 };

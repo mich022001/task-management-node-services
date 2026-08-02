@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const currentFile = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(currentFile), '..');
@@ -8,20 +8,25 @@ const projectRoot = path.resolve(path.dirname(currentFile), '..');
 function runEnvImport(overrides = {}) {
   return spawnSync(
     process.execPath,
-    [
-      '--input-type=module',
-      '-e',
-      "import('./src/config/env.js')",
-    ],
+    ['--input-type=module', '-e', "import('./src/config/env.js')"],
     {
       cwd: projectRoot,
       env: {
         ...process.env,
+
         NODE_ENV: 'test',
         PORT: '3001',
         FRONTEND_URL: 'http://localhost:5173',
         JWT_SECRET: 'test-jwt-secret-key-1234567890abcdef',
         LOG_LEVEL: 'silent',
+
+        LARAVEL_API_URL: 'http://127.0.0.1:8000/api/v1',
+        LARAVEL_INTERNAL_API_URL: 'http://127.0.0.1:8000/api/v1/internal',
+        LARAVEL_SERVICE_KEY: 'test-service-key-1234567890-abcdef',
+        LARAVEL_TIMEOUT: '5000',
+        LARAVEL_RETRY_ATTEMPTS: '2',
+        LARAVEL_RETRY_DELAY: '300',
+
         ...overrides,
       },
       encoding: 'utf8',
@@ -44,9 +49,7 @@ describe('Environment validation', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('JWT_SECRET');
-    expect(result.stderr).toContain(
-      'Invalid environment configuration.',
-    );
+    expect(result.stderr).toContain('Invalid environment configuration.');
   });
 
   test('fails when PORT is outside the valid range', () => {
@@ -74,5 +77,87 @@ describe('Environment validation', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('FRONTEND_URL');
+  });
+
+  test('fails when LARAVEL_API_URL is invalid', () => {
+    const result = runEnvImport({
+      LARAVEL_API_URL: 'not-a-url',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_API_URL');
+  });
+
+  test('fails when LARAVEL_INTERNAL_API_URL is invalid', () => {
+    const result = runEnvImport({
+      LARAVEL_INTERNAL_API_URL: 'invalid-url',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_INTERNAL_API_URL');
+  });
+
+  test('fails when LARAVEL_SERVICE_KEY is too short', () => {
+    const result = runEnvImport({
+      LARAVEL_SERVICE_KEY: 'short-key',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_SERVICE_KEY');
+    expect(result.stderr).toContain('must contain at least 32 characters');
+  });
+
+  test('fails when LARAVEL_TIMEOUT is zero', () => {
+    const result = runEnvImport({
+      LARAVEL_TIMEOUT: '0',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_TIMEOUT');
+  });
+
+  test('fails when LARAVEL_TIMEOUT is not numeric', () => {
+    const result = runEnvImport({
+      LARAVEL_TIMEOUT: 'invalid',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_TIMEOUT');
+  });
+
+  test('fails when LARAVEL_RETRY_ATTEMPTS is negative', () => {
+    const result = runEnvImport({
+      LARAVEL_RETRY_ATTEMPTS: '-1',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_RETRY_ATTEMPTS');
+  });
+
+  test('fails when LARAVEL_RETRY_ATTEMPTS exceeds maximum', () => {
+    const result = runEnvImport({
+      LARAVEL_RETRY_ATTEMPTS: '11',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_RETRY_ATTEMPTS');
+  });
+
+  test('fails when LARAVEL_RETRY_DELAY is negative', () => {
+    const result = runEnvImport({
+      LARAVEL_RETRY_DELAY: '-1',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_RETRY_DELAY');
+  });
+
+  test('fails when LARAVEL_RETRY_DELAY is not numeric', () => {
+    const result = runEnvImport({
+      LARAVEL_RETRY_DELAY: 'invalid',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('LARAVEL_RETRY_DELAY');
   });
 });

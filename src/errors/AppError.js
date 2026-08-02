@@ -1,12 +1,7 @@
 export class AppError extends Error {
   constructor(
     message,
-    {
-      statusCode = 500,
-      code = 'INTERNAL_SERVER_ERROR',
-      errors,
-      cause,
-    } = {},
+    { statusCode = 500, code = 'INTERNAL_SERVER_ERROR', errors, cause } = {},
   ) {
     super(message, { cause });
 

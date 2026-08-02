@@ -2,10 +2,7 @@ import jwt from 'jsonwebtoken';
 
 import { env } from '../../src/config/env.js';
 
-export function createToken(
-  payload = {},
-  options = {},
-) {
+export function createToken(payload = {}, options = {}) {
   return jwt.sign(
     {
       sub: '1',

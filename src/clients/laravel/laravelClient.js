@@ -6,11 +6,7 @@ import { LaravelClientError } from '../../errors/LaravelClientError.js';
 import { retry } from '../../utils/retry.js';
 
 function isRetryableStatus(statusCode) {
-  return (
-    statusCode === 408
-    || statusCode === 429
-    || statusCode >= 500
-  );
+  return statusCode === 408 || statusCode === 429 || statusCode >= 500;
 }
 
 function normalizeLaravelError(error) {
@@ -19,27 +15,21 @@ function normalizeLaravelError(error) {
   }
 
   if (error.code === 'ECONNABORTED') {
-    return new LaravelClientError(
-      'Laravel API request timed out.',
-      {
-        statusCode: 504,
-        code: 'LARAVEL_TIMEOUT',
-        cause: error,
-        retryable: true,
-      },
-    );
+    return new LaravelClientError('Laravel API request timed out.', {
+      statusCode: 504,
+      code: 'LARAVEL_TIMEOUT',
+      cause: error,
+      retryable: true,
+    });
   }
 
   if (!error.response) {
-    return new LaravelClientError(
-      'Unable to connect to the Laravel API.',
-      {
-        statusCode: 503,
-        code: 'LARAVEL_UNAVAILABLE',
-        cause: error,
-        retryable: true,
-      },
-    );
+    return new LaravelClientError('Unable to connect to the Laravel API.', {
+      statusCode: 503,
+      code: 'LARAVEL_UNAVAILABLE',
+      cause: error,
+      retryable: true,
+    });
   }
 
   const upstreamStatus = error.response.status;
@@ -49,9 +39,7 @@ function normalizeLaravelError(error) {
     responseData?.message || 'Laravel API request failed.',
     {
       statusCode: upstreamStatus,
-      code:
-        responseData?.code
-        || 'LARAVEL_REQUEST_FAILED',
+      code: responseData?.code || 'LARAVEL_REQUEST_FAILED',
       errors: responseData?.errors,
       cause: error,
       retryable: isRetryableStatus(upstreamStatus),

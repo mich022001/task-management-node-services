@@ -3,11 +3,7 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: [
-      'node_modules/**',
-      'coverage/**',
-      'logs/**',
-    ],
+    ignores: ['node_modules/**', 'coverage/**', 'logs/**'],
   },
 
   js.configs.recommended,
@@ -35,8 +31,8 @@ export default [
       ],
       'no-undef': 'error',
       'prefer-const': 'error',
-      'eqeqeq': ['error', 'always'],
-      'curly': ['error', 'all'],
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'all'],
     },
   },
 

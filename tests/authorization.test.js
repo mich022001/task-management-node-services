@@ -14,9 +14,7 @@ describe('Role authorization middleware', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(response.body.message).toBe(
-      'Admin endpoint accessed successfully.',
-    );
+    expect(response.body.message).toBe('Admin endpoint accessed successfully.');
 
     expect(response.body.data.user.role).toBe('admin');
     expect(response.body.data.user.claims).toBeUndefined();
@@ -92,8 +90,6 @@ describe('Role authorization middleware', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
 
-    expect(response.body.code).toBe(
-      'ROLE_CLAIM_REQUIRED',
-    );
+    expect(response.body.code).toBe('ROLE_CLAIM_REQUIRED');
   });
 });

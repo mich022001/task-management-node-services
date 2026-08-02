@@ -11,13 +11,11 @@ function getBearerToken(authorizationHeader) {
     });
   }
 
-  const [scheme, token, ...extraParts] = authorizationHeader.trim().split(/\s+/);
+  const [scheme, token, ...extraParts] = authorizationHeader
+    .trim()
+    .split(/\s+/);
 
-  if (
-    scheme?.toLowerCase() !== 'bearer' ||
-    !token ||
-    extraParts.length > 0
-  ) {
+  if (scheme?.toLowerCase() !== 'bearer' || !token || extraParts.length > 0) {
     throw new AppError(
       'Authorization header must use the Bearer token format.',
       {
