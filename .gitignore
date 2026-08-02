@@ -1,7 +1,7 @@
-node_modules/
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+node_modules/
 logs/
 coverage/
 *.log

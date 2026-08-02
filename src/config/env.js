@@ -39,6 +39,23 @@ const environmentSchema = z.object({
   LARAVEL_RETRY_ATTEMPTS: z.coerce.number().int().min(0).max(10).default(2),
 
   LARAVEL_RETRY_DELAY: z.coerce.number().int().min(0).default(300),
+
+  SMTP_HOST: z.string().trim().min(1),
+
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+
+  SMTP_USER: z.string().trim().min(1),
+
+  SMTP_PASS: z.string().min(1),
+
+  SMTP_FROM_NAME: z.string().trim().min(1).default('Task Management Platform'),
+
+  SMTP_FROM_EMAIL: z.email().default('no-reply@example.com'),
 });
 
 const validationResult = environmentSchema.safeParse(process.env);

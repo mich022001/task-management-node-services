@@ -27,6 +27,14 @@ function runEnvImport(overrides = {}) {
         LARAVEL_RETRY_ATTEMPTS: '2',
         LARAVEL_RETRY_DELAY: '300',
 
+        SMTP_HOST: 'localhost',
+        SMTP_PORT: '1025',
+        SMTP_SECURE: 'false',
+        SMTP_USER: 'test-user',
+        SMTP_PASS: 'test-password',
+        SMTP_FROM_NAME: 'Task Management Platform',
+        SMTP_FROM_EMAIL: 'no-reply@example.com',
+
         ...overrides,
       },
       encoding: 'utf8',
@@ -159,5 +167,59 @@ describe('Environment validation', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('LARAVEL_RETRY_DELAY');
+  });
+
+  test('fails when SMTP_HOST is missing', () => {
+    const result = runEnvImport({
+      SMTP_HOST: '',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_HOST');
+  });
+
+  test('fails when SMTP_PORT is outside the valid range', () => {
+    const result = runEnvImport({
+      SMTP_PORT: '70000',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_PORT');
+  });
+
+  test('fails when SMTP_SECURE is invalid', () => {
+    const result = runEnvImport({
+      SMTP_SECURE: 'yes',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_SECURE');
+  });
+
+  test('fails when SMTP_USER is missing', () => {
+    const result = runEnvImport({
+      SMTP_USER: '',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_USER');
+  });
+
+  test('fails when SMTP_PASS is missing', () => {
+    const result = runEnvImport({
+      SMTP_PASS: '',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_PASS');
+  });
+
+  test('fails when SMTP_FROM_EMAIL is invalid', () => {
+    const result = runEnvImport({
+      SMTP_FROM_EMAIL: 'invalid-email',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_FROM_EMAIL');
   });
 });

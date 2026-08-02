@@ -7,6 +7,7 @@ import { httpLogger } from './config/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import healthRoutes from './routes/health.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 import protectedRoutes from './routes/protected.routes.js';
 
 const app = express();
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/protected', protectedRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
