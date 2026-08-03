@@ -63,6 +63,10 @@ function buildUserScope(authenticatedUser, teamIds) {
     return teamIds === undefined ? 'admin:all' : `admin:${teamIds.join(',')}`;
   }
 
+  if (authenticatedUser.role === 'team_member') {
+    return `team-member:${authenticatedUser.id}`;
+  }
+
   return [
     'manager',
     authenticatedUser.id,
@@ -147,7 +151,12 @@ export async function getTaskSummary(req, res, next) {
       });
     }
 
-    const tasks = await getAllTasks();
+    const tasks =
+      req.user.role === 'team_member'
+        ? await getAllTasks({
+            assigned_to: req.user.id,
+          })
+        : await getAllTasks();
 
     const summary = buildTaskSummary(tasks, {
       teamIds,
@@ -275,7 +284,12 @@ export async function getUpcomingDeadlines(req, res, next) {
       });
     }
 
-    const tasks = await getAllTasks();
+    const tasks =
+      req.user.role === 'team_member'
+        ? await getAllTasks({
+            assigned_to: req.user.id,
+          })
+        : await getAllTasks();
 
     const deadlines = buildUpcomingDeadlines(tasks, {
       days: query.days,

@@ -11,10 +11,23 @@ import { authorizeRoles } from '../middleware/authorizeRoles.js';
 const router = Router();
 
 router.use(authenticate);
-router.use(authorizeRoles('admin', 'manager'));
 
-router.get('/tasks/summary', getTaskSummary);
-router.get('/teams/:teamId/productivity', getTeamProductivity);
-router.get('/deadlines/upcoming', getUpcomingDeadlines);
+router.get(
+  '/tasks/summary',
+  authorizeRoles('admin', 'manager', 'team_member'),
+  getTaskSummary,
+);
+
+router.get(
+  '/teams/:teamId/productivity',
+  authorizeRoles('admin', 'manager'),
+  getTeamProductivity,
+);
+
+router.get(
+  '/deadlines/upcoming',
+  authorizeRoles('admin', 'manager', 'team_member'),
+  getUpcomingDeadlines,
+);
 
 export default router;

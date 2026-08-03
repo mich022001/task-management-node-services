@@ -37,6 +37,10 @@ export async function getAuthorizedTeamIds(
     return undefined;
   }
 
+  if (authenticatedUser.role === 'team_member') {
+    return [];
+  }
+
   if (authenticatedUser.role !== 'manager') {
     throw new AppError('You are not authorized to access analytics.', {
       statusCode: 403,
@@ -46,9 +50,7 @@ export async function getAuthorizedTeamIds(
 
   const teams = await getTeamsForUserFn(authenticatedUser.id);
 
-  return [...new Set(teams.map((team) => Number(team.id)))].sort(
-    (firstTeamId, secondTeamId) => firstTeamId - secondTeamId,
-  );
+  return [...new Set(teams.map((team) => String(team.id)))].sort();
 }
 
 export function assertTeamAccess(authenticatedUser, teamId, authorizedTeamIds) {
@@ -70,10 +72,10 @@ export function assertTeamAccess(authenticatedUser, teamId, authorizedTeamIds) {
     });
   }
 
-  const normalizedTeamId = Number(teamId);
+  const normalizedTeamId = String(teamId);
 
   const hasAccess = (authorizedTeamIds ?? []).some(
-    (authorizedTeamId) => Number(authorizedTeamId) === normalizedTeamId,
+    (authorizedTeamId) => String(authorizedTeamId) === normalizedTeamId,
   );
 
   if (!hasAccess) {
@@ -95,13 +97,24 @@ export function resolveAnalyticsTeamIds({
   if (authenticatedUser.role === 'admin') {
     return requestedTeamId === undefined
       ? undefined
-      : [Number(requestedTeamId)];
+      : [String(requestedTeamId)];
+  }
+
+  if (authenticatedUser.role === 'team_member') {
+    if (requestedTeamId !== undefined) {
+      throw new AppError('Team Members cannot request team-scoped analytics.', {
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      });
+    }
+
+    return undefined;
   }
 
   if (requestedTeamId !== undefined) {
     assertTeamAccess(authenticatedUser, requestedTeamId, authorizedTeamIds);
 
-    return [Number(requestedTeamId)];
+    return [String(requestedTeamId)];
   }
 
   return authorizedTeamIds ?? [];

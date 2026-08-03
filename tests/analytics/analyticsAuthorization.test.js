@@ -45,21 +45,18 @@ describe('Analytics authorization service', () => {
       });
     });
 
-    test('rejects a team member', async () => {
-      await expect(
-        getAuthorizedTeamIds(
-          createUser({
-            id: '3',
-            role: 'team_member',
-          }),
-          {
-            getTeamsForUserFn: jest.fn(),
-          },
-        ),
-      ).rejects.toMatchObject({
-        statusCode: 403,
-        code: 'FORBIDDEN',
-      });
+    test('returns an empty team scope for a team member', async () => {
+      const result = await getAuthorizedTeamIds(
+        createUser({
+          id: '3',
+          role: 'team_member',
+        }),
+        {
+          getTeamsForUserFn: jest.fn(),
+        },
+      );
+
+      expect(result).toEqual([]);
     });
 
     test('retrieves manager teams using one filtered operation', async () => {
@@ -78,7 +75,7 @@ describe('Analytics authorization service', () => {
         getTeamsForUserFn,
       });
 
-      expect(result).toEqual([1, 4]);
+      expect(result).toEqual(['1', '4']);
       expect(getTeamsForUserFn).toHaveBeenCalledTimes(1);
       expect(getTeamsForUserFn).toHaveBeenCalledWith('2');
     });
@@ -92,7 +89,7 @@ describe('Analytics authorization service', () => {
         getTeamsForUserFn,
       });
 
-      expect(result).toEqual([2, 5, 9]);
+      expect(result).toEqual(['2', '5', '9']);
     });
 
     test('returns an empty list when manager has no teams', async () => {
@@ -178,7 +175,7 @@ describe('Analytics authorization service', () => {
         authorizedTeamIds: undefined,
       });
 
-      expect(result).toEqual([8]);
+      expect(result).toEqual(['8']);
     });
 
     test('returns all authorized teams for a manager without a filter', () => {
@@ -198,7 +195,7 @@ describe('Analytics authorization service', () => {
         authorizedTeamIds: [1, 3],
       });
 
-      expect(result).toEqual([3]);
+      expect(result).toEqual(['3']);
     });
 
     test('rejects an unauthorized manager filter', () => {

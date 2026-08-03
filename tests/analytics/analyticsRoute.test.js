@@ -143,7 +143,7 @@ describe('Analytics routes', () => {
     expect(getTasksMock).not.toHaveBeenCalled();
   });
 
-  test('rejects a team member', async () => {
+  test('returns task summary for a team member', async () => {
     const token = createToken({
       sub: '3',
       role: 'team_member',
@@ -154,13 +154,17 @@ describe('Analytics routes', () => {
       .get('/api/v1/analytics/tasks/summary')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
 
-    expect(response.body).toMatchObject({
-      code: 'FORBIDDEN',
-    });
+    expect(getTasksMock).toHaveBeenCalledTimes(1);
 
-    expect(getTasksMock).not.toHaveBeenCalled();
+    expect(getTasksMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assigned_to: '3',
+        page: 1,
+        per_page: 100,
+      }),
+    );
   });
 
   test('returns task summary for an admin', async () => {

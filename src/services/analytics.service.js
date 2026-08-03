@@ -37,9 +37,9 @@ function filterTasksByTeamIds(tasks, teamIds) {
     return tasks;
   }
 
-  const allowedTeamIds = new Set(teamIds.map(Number));
+  const allowedTeamIds = new Set(teamIds.map(String));
 
-  return tasks.filter((task) => allowedTeamIds.has(Number(task.team_id)));
+  return tasks.filter((task) => allowedTeamIds.has(String(task.team_id)));
 }
 
 export function buildTaskSummary(tasks, { teamIds, now = new Date() } = {}) {
@@ -82,9 +82,9 @@ export function buildTaskSummary(tasks, { teamIds, now = new Date() } = {}) {
 }
 
 export function buildTeamProductivity(team, tasks, { now = new Date() } = {}) {
-  const teamId = Number(team.id);
+  const teamId = String(team.id);
 
-  const teamTasks = tasks.filter((task) => Number(task.team_id) === teamId);
+  const teamTasks = tasks.filter((task) => String(task.team_id) === teamId);
 
   const status = createZeroCounts(TASK_STATUSES);
 
@@ -109,7 +109,7 @@ export function buildTeamProductivity(team, tasks, { now = new Date() } = {}) {
 
   const members = (team.members ?? []).map((member) => {
     const memberTasks = teamTasks.filter(
-      (task) => Number(task.assigned_to) === Number(member.id),
+      (task) => String(task.assigned_to) === String(member.id),
     );
 
     const memberCompletedTasks = memberTasks.filter(
