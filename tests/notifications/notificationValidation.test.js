@@ -98,4 +98,47 @@ describe('Notification request validation', () => {
 
     expect(result.success).toBe(false);
   });
+  it('accepts a valid task status change notification', () => {
+    const result = validateNotification({
+      type: 'task_status_changed',
+      task_id: '123e4567-e89b-12d3-a456-426614174000',
+      previous_status: 'pending',
+      new_status: 'in_progress',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects identical previous and new task statuses', () => {
+    const result = validateNotification({
+      type: 'task_status_changed',
+      task_id: '123e4567-e89b-12d3-a456-426614174000',
+      previous_status: 'pending',
+      new_status: 'pending',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unsupported previous task status', () => {
+    const result = validateNotification({
+      type: 'task_status_changed',
+      task_id: '123e4567-e89b-12d3-a456-426614174000',
+      previous_status: 'archived',
+      new_status: 'completed',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unsupported new task status', () => {
+    const result = validateNotification({
+      type: 'task_status_changed',
+      task_id: '123e4567-e89b-12d3-a456-426614174000',
+      previous_status: 'pending',
+      new_status: 'archived',
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

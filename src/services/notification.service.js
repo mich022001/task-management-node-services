@@ -16,6 +16,18 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function formatStatus(status) {
+  return String(status).replaceAll('_', ' ');
+}
+
+function buildSkippedNotification(recipient) {
+  return {
+    skipped: true,
+    reason: 'EMAIL_NOTIFICATIONS_DISABLED',
+    recipient: recipient?.email ?? null,
+  };
+}
+
 function buildTaskAssignedNotification(task, recipient) {
   const taskTitle = task.title;
   const recipientName = recipient.name || 'Team Member';
@@ -23,6 +35,7 @@ function buildTaskAssignedNotification(task, recipient) {
   return {
     to: recipient.email,
     subject: `New task assigned: ${taskTitle}`,
+
     text: [
       `Hello ${recipientName},`,
       '',
@@ -54,6 +67,46 @@ function buildTaskAssignedNotification(task, recipient) {
   };
 }
 
+function buildTaskStatusChangedNotification(task, recipient, payload) {
+  const taskTitle = task.title;
+  const recipientName = recipient.name || 'Manager';
+
+  const previousStatus = formatStatus(payload.previous_status);
+  const newStatus = formatStatus(payload.new_status);
+
+  return {
+    to: recipient.email,
+    subject: `Task status changed: ${taskTitle}`,
+
+    text: [
+      `Hello ${recipientName},`,
+      '',
+      `The status of "${taskTitle}" changed.`,
+      `Previous status: ${previousStatus}`,
+      `New status: ${newStatus}`,
+      '',
+      'Please open the Task Management Platform for more details.',
+    ].join('\n'),
+
+    html: `
+      <p>Hello ${escapeHtml(recipientName)},</p>
+      <p>The status of the following task changed:</p>
+      <h2>${escapeHtml(taskTitle)}</h2>
+      <ul>
+        <li>
+          <strong>Previous status:</strong>
+          ${escapeHtml(previousStatus)}
+        </li>
+        <li>
+          <strong>New status:</strong>
+          ${escapeHtml(newStatus)}
+        </li>
+      </ul>
+      <p>Please open the Task Management Platform for more details.</p>
+    `.trim(),
+  };
+}
+
 function buildTaskCompletedNotification(task, recipient) {
   const taskTitle = task.title;
   const recipientName = recipient.name || 'Manager';
@@ -61,6 +114,7 @@ function buildTaskCompletedNotification(task, recipient) {
   return {
     to: recipient.email,
     subject: `Task completed: ${taskTitle}`,
+
     text: [
       `Hello ${recipientName},`,
       '',
@@ -100,6 +154,27 @@ function buildCustomNotification(payload) {
   };
 }
 
+async function getRecipient(userId, roleDescription) {
+  const userResponse = await getUser(userId);
+  const recipient = unwrapResource(userResponse, 'user');
+
+  if (recipient?.email_notifications_enabled === false) {
+    return buildSkippedNotification(recipient);
+  }
+
+  if (!recipient?.email) {
+    throw new AppError(
+      `The ${roleDescription} does not have an email address.`,
+      {
+        statusCode: 422,
+        code: 'RECIPIENT_EMAIL_REQUIRED',
+      },
+    );
+  }
+
+  return recipient;
+}
+
 export async function buildNotification(payload) {
   if (payload.type === 'custom') {
     return buildCustomNotification(payload);
@@ -125,17 +200,32 @@ export async function buildNotification(payload) {
       });
     }
 
-    const userResponse = await getUser(assigneeId);
-    const recipient = unwrapResource(userResponse, 'user');
+    const recipient = await getRecipient(assigneeId, 'assigned user');
 
-    if (!recipient?.email) {
-      throw new AppError('The assigned user does not have an email address.', {
-        statusCode: 422,
-        code: 'RECIPIENT_EMAIL_REQUIRED',
-      });
+    if (recipient.skipped) {
+      return recipient;
     }
 
     return buildTaskAssignedNotification(task, recipient);
+  }
+
+  if (payload.type === 'task_status_changed') {
+    const creatorId = task.created_by ?? task.creator?.id;
+
+    if (!creatorId) {
+      throw new AppError('The task does not have a creator.', {
+        statusCode: 422,
+        code: 'TASK_CREATOR_REQUIRED',
+      });
+    }
+
+    const recipient = await getRecipient(creatorId, 'task creator');
+
+    if (recipient.skipped) {
+      return recipient;
+    }
+
+    return buildTaskStatusChangedNotification(task, recipient, payload);
   }
 
   if (payload.type === 'task_completed') {
@@ -148,14 +238,10 @@ export async function buildNotification(payload) {
       });
     }
 
-    const userResponse = await getUser(creatorId);
-    const recipient = unwrapResource(userResponse, 'user');
+    const recipient = await getRecipient(creatorId, 'task creator');
 
-    if (!recipient?.email) {
-      throw new AppError('The task creator does not have an email address.', {
-        statusCode: 422,
-        code: 'RECIPIENT_EMAIL_REQUIRED',
-      });
+    if (recipient.skipped) {
+      return recipient;
     }
 
     return buildTaskCompletedNotification(task, recipient);
@@ -169,10 +255,21 @@ export async function buildNotification(payload) {
 
 export async function processNotification(payload) {
   const email = await buildNotification(payload);
+
+  if (email.skipped) {
+    return {
+      delivered: false,
+      skipped: true,
+      reason: email.reason,
+      recipient: email.recipient,
+    };
+  }
+
   const delivery = await sendMail(email);
 
   return {
     delivered: true,
+    skipped: false,
     recipient: email.to,
     subject: email.subject,
     messageId: delivery.messageId,

@@ -1,15 +1,15 @@
 import { Router } from 'express';
 
 import { queueNotification } from '../controllers/notification.controller.js';
-import { authenticate } from '../middleware/authenticate.js';
-import { authorizeRoles } from '../middleware/authorizeRoles.js';
+import { authenticateNotificationCaller } from '../middleware/authenticateNotificationCaller.js';
+import { notificationRateLimiter } from '../middleware/notificationRateLimiter.js';
 
 const router = Router();
 
 router.post(
   '/',
-  authenticate,
-  authorizeRoles('admin', 'manager'),
+  authenticateNotificationCaller,
+  notificationRateLimiter,
   queueNotification,
 );
 

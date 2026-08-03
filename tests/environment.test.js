@@ -18,6 +18,7 @@ function runEnvImport(overrides = {}) {
         PORT: '3001',
         FRONTEND_URL: 'http://localhost:5173',
         JWT_SECRET: 'test-jwt-secret-key-1234567890abcdef',
+        NODE_SERVICE_KEY: 'test-node-service-key-1234567890abcdef',
         LOG_LEVEL: 'silent',
 
         LARAVEL_API_URL: 'http://127.0.0.1:8000/api/v1',
@@ -58,6 +59,26 @@ describe('Environment validation', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('JWT_SECRET');
     expect(result.stderr).toContain('Invalid environment configuration.');
+  });
+
+  test('fails when NODE_SERVICE_KEY is missing', () => {
+    const result = runEnvImport({
+      NODE_SERVICE_KEY: '',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('NODE_SERVICE_KEY');
+    expect(result.stderr).toContain('Invalid environment configuration.');
+  });
+
+  test('fails when NODE_SERVICE_KEY is too short', () => {
+    const result = runEnvImport({
+      NODE_SERVICE_KEY: 'short-key',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('NODE_SERVICE_KEY');
+    expect(result.stderr).toContain('must contain at least 32 characters');
   });
 
   test('fails when PORT is outside the valid range', () => {

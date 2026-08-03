@@ -202,6 +202,7 @@ describe('Notification service', () => {
 
     expect(result).toEqual({
       delivered: true,
+      skipped: false,
       recipient: 'member@test.com',
       subject: 'Test',
       messageId: 'message-123',
@@ -218,5 +219,193 @@ describe('Notification service', () => {
 
     expect(notification.html).not.toContain('<script>');
     expect(notification.html).toContain('&lt;script&gt;');
+  });
+  test('builds a task status change notification for the creator', async () => {
+    getTaskMock.mockResolvedValue({
+      data: {
+        task: {
+          id: 14,
+          title: 'Review deployment',
+          status: 'in_progress',
+          created_by: 2,
+        },
+      },
+    });
+
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: 2,
+          name: 'Team Manager',
+          email: 'manager@test.com',
+          email_notifications_enabled: true,
+        },
+      },
+    });
+
+    const notification = await buildNotification({
+      type: 'task_status_changed',
+      task_id: 14,
+      previous_status: 'pending',
+      new_status: 'in_progress',
+    });
+
+    expect(getTaskMock).toHaveBeenCalledWith(14);
+    expect(getUserMock).toHaveBeenCalledWith(2);
+
+    expect(notification).toMatchObject({
+      to: 'manager@test.com',
+      subject: 'Task status changed: Review deployment',
+    });
+
+    expect(notification.text).toContain('Previous status: pending');
+    expect(notification.text).toContain('New status: in progress');
+    expect(notification.html).toContain('Review deployment');
+  });
+
+  test('skips assignment email when assignee disabled email notifications', async () => {
+    getTaskMock.mockResolvedValue({
+      data: {
+        task: {
+          id: 15,
+          title: 'Disabled assignment email',
+          priority: 'medium',
+          status: 'pending',
+          assigned_to: 3,
+        },
+      },
+    });
+
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: 3,
+          name: 'Team Member',
+          email: 'member@test.com',
+          email_notifications_enabled: false,
+        },
+      },
+    });
+
+    const notification = await buildNotification({
+      type: 'task_assigned',
+      task_id: 15,
+    });
+
+    expect(notification).toEqual({
+      skipped: true,
+      reason: 'EMAIL_NOTIFICATIONS_DISABLED',
+      recipient: 'member@test.com',
+    });
+  });
+
+  test('skips status change email when creator disabled email notifications', async () => {
+    getTaskMock.mockResolvedValue({
+      data: {
+        task: {
+          id: 16,
+          title: 'Disabled status email',
+          status: 'in_progress',
+          created_by: 2,
+        },
+      },
+    });
+
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: 2,
+          name: 'Manager',
+          email: 'manager@test.com',
+          email_notifications_enabled: false,
+        },
+      },
+    });
+
+    const notification = await buildNotification({
+      type: 'task_status_changed',
+      task_id: 16,
+      previous_status: 'pending',
+      new_status: 'in_progress',
+    });
+
+    expect(notification).toEqual({
+      skipped: true,
+      reason: 'EMAIL_NOTIFICATIONS_DISABLED',
+      recipient: 'manager@test.com',
+    });
+  });
+
+  test('skips completion email when creator disabled email notifications', async () => {
+    getTaskMock.mockResolvedValue({
+      data: {
+        task: {
+          id: 17,
+          title: 'Disabled completion email',
+          status: 'completed',
+          created_by: 2,
+        },
+      },
+    });
+
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: 2,
+          name: 'Manager',
+          email: 'manager@test.com',
+          email_notifications_enabled: false,
+        },
+      },
+    });
+
+    const notification = await buildNotification({
+      type: 'task_completed',
+      task_id: 17,
+    });
+
+    expect(notification).toEqual({
+      skipped: true,
+      reason: 'EMAIL_NOTIFICATIONS_DISABLED',
+      recipient: 'manager@test.com',
+    });
+  });
+
+  test('processes disabled email preference as skipped without calling mail service', async () => {
+    getTaskMock.mockResolvedValue({
+      data: {
+        task: {
+          id: 18,
+          title: 'Skipped notification',
+          status: 'pending',
+          assigned_to: 3,
+        },
+      },
+    });
+
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: 3,
+          name: 'Team Member',
+          email: 'member@test.com',
+          email_notifications_enabled: false,
+        },
+      },
+    });
+
+    const result = await processNotification({
+      type: 'task_assigned',
+      task_id: 18,
+    });
+
+    expect(sendMailMock).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
+      delivered: false,
+      skipped: true,
+      reason: 'EMAIL_NOTIFICATIONS_DISABLED',
+      recipient: 'member@test.com',
+    });
   });
 });

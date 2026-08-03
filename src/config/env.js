@@ -19,6 +19,11 @@ const environmentSchema = z.object({
     .trim()
     .min(32, 'JWT_SECRET must contain at least 32 characters.'),
 
+  NODE_SERVICE_KEY: z
+    .string()
+    .trim()
+    .min(32, 'NODE_SERVICE_KEY must contain at least 32 characters.'),
+
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
