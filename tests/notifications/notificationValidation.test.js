@@ -7,17 +7,17 @@ describe('Notification request validation', () => {
   test('accepts a valid task assignment notification', () => {
     const result = validateNotification({
       type: 'task_assigned',
-      task_id: 1,
+      task_id: '11111111-1111-4111-8111-111111111111',
     });
 
     expect(result.success).toBe(true);
-    expect(result.data.task_id).toBe(1);
+    expect(result.data.task_id).toBe('11111111-1111-4111-8111-111111111111');
   });
 
   test('accepts a valid task completion notification', () => {
     const result = notificationSchema.safeParse({
       type: 'task_completed',
-      task_id: 2,
+      task_id: '22222222-2222-4222-8222-222222222222',
     });
 
     expect(result.success).toBe(true);
@@ -36,7 +36,7 @@ describe('Notification request validation', () => {
 
   test('rejects a missing notification type', () => {
     const result = validateNotification({
-      task_id: 1,
+      task_id: '11111111-1111-4111-8111-111111111111',
     });
 
     expect(result.success).toBe(false);
@@ -45,7 +45,16 @@ describe('Notification request validation', () => {
   test('rejects an unsupported notification type', () => {
     const result = validateNotification({
       type: 'unknown',
-      task_id: 1,
+      task_id: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects a numeric task ID because public task IDs are UUIDs', () => {
+    const result = validateNotification({
+      type: 'task_assigned',
+      task_id: 15,
     });
 
     expect(result.success).toBe(false);

@@ -223,7 +223,9 @@ describe('Export routes', () => {
     resolveAnalyticsTeamIdsMock.mockReturnValue([1]);
 
     const response = await request(app)
-      .get('/api/v1/export/tasks/csv?team_id=1')
+      .get(
+        '/api/v1/export/tasks/csv?team_id=11111111-1111-4111-8111-111111111111',
+      )
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -233,12 +235,12 @@ describe('Export routes', () => {
         id: '2',
         role: 'manager',
       }),
-      requestedTeamId: 1,
+      requestedTeamId: '11111111-1111-4111-8111-111111111111',
       authorizedTeamIds: [1, 2],
     });
 
     expect(getTasksMock).toHaveBeenCalledWith({
-      team_id: 1,
+      team_id: '11111111-1111-4111-8111-111111111111',
       page: 1,
       per_page: 100,
     });
@@ -465,7 +467,9 @@ describe('Export routes', () => {
     resolveAnalyticsTeamIdsMock.mockReturnValue([1]);
 
     const response = await request(app)
-      .get('/api/v1/export/analytics/summary/csv?team_id=1')
+      .get(
+        '/api/v1/export/analytics/summary/csv?team_id=11111111-1111-4111-8111-111111111111',
+      )
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -475,7 +479,7 @@ describe('Export routes', () => {
         id: '2',
         role: 'manager',
       }),
-      requestedTeamId: 1,
+      requestedTeamId: '11111111-1111-4111-8111-111111111111',
       authorizedTeamIds: [1, 2],
     });
   });

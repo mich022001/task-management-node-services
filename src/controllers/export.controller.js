@@ -226,9 +226,9 @@ function filterTasksByTeamIds(tasks, teamIds) {
     return tasks;
   }
 
-  const authorizedTeamIds = new Set(teamIds.map(Number));
+  const authorizedTeamIds = new Set(teamIds.map(String));
 
-  return tasks.filter((task) => authorizedTeamIds.has(Number(task.team_id)));
+  return tasks.filter((task) => authorizedTeamIds.has(String(task.team_id)));
 }
 
 function buildFilename(resource, format) {

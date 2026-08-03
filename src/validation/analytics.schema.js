@@ -1,16 +1,16 @@
 import { z } from 'zod';
 
-const positiveIntegerSchema = z.coerce
-  .number()
-  .int('Value must be an integer.')
-  .positive('Value must be greater than zero.');
+const teamIdentifierSchema = z
+  .string()
+  .trim()
+  .uuid('Value must be a valid team UUID.');
 
 export const taskSummaryQuerySchema = z.object({
-  team_id: positiveIntegerSchema.optional(),
+  team_id: teamIdentifierSchema.optional(),
 });
 
 export const teamProductivityParamsSchema = z.object({
-  teamId: positiveIntegerSchema,
+  teamId: teamIdentifierSchema,
 });
 
 export const upcomingDeadlinesQuerySchema = z.object({
@@ -21,7 +21,7 @@ export const upcomingDeadlinesQuerySchema = z.object({
     .max(90, 'Days must not exceed 90.')
     .default(7),
 
-  team_id: positiveIntegerSchema.optional(),
+  team_id: teamIdentifierSchema.optional(),
 });
 
 export function formatValidationErrors(error) {

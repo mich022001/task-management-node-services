@@ -275,7 +275,9 @@ describe('Analytics routes', () => {
     getAuthorizedTeamIdsMock.mockResolvedValue([1, 2]);
 
     const response = await request(app)
-      .get('/api/v1/analytics/tasks/summary?team_id=2')
+      .get(
+        '/api/v1/analytics/tasks/summary?team_id=22222222-2222-4222-8222-222222222222',
+      )
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -285,7 +287,7 @@ describe('Analytics routes', () => {
         id: '2',
         role: 'manager',
       }),
-      requestedTeamId: 2,
+      requestedTeamId: '22222222-2222-4222-8222-222222222222',
       authorizedTeamIds: [1, 2],
     });
   });
@@ -342,7 +344,9 @@ describe('Analytics routes', () => {
     });
 
     const response = await request(app)
-      .get('/api/v1/analytics/teams/1/productivity')
+      .get(
+        '/api/v1/analytics/teams/11111111-1111-4111-8111-111111111111/productivity',
+      )
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -370,14 +374,16 @@ describe('Analytics routes', () => {
       expect.objectContaining({
         role: 'admin',
       }),
-      1,
+      '11111111-1111-4111-8111-111111111111',
       undefined,
     );
 
-    expect(getTeamMock).toHaveBeenCalledWith(1);
+    expect(getTeamMock).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+    );
 
     expect(getTasksMock).toHaveBeenCalledWith({
-      team_id: 1,
+      team_id: '11111111-1111-4111-8111-111111111111',
       page: 1,
       per_page: 100,
     });
@@ -424,7 +430,9 @@ describe('Analytics routes', () => {
     });
 
     const response = await request(app)
-      .get('/api/v1/analytics/teams/99/productivity')
+      .get(
+        '/api/v1/analytics/teams/99999999-9999-4999-8999-999999999999/productivity',
+      )
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(403);

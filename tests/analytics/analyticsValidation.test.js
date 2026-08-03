@@ -16,12 +16,12 @@ describe('Analytics request validation', () => {
 
     test('accepts and converts a valid team ID', () => {
       const result = taskSummaryQuerySchema.safeParse({
-        team_id: '5',
+        team_id: '11111111-1111-4111-8111-111111111111',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
-        team_id: 5,
+        team_id: '11111111-1111-4111-8111-111111111111',
       });
     });
 
@@ -61,12 +61,12 @@ describe('Analytics request validation', () => {
   describe('team productivity parameters', () => {
     test('accepts and converts a valid team ID', () => {
       const result = teamProductivityParamsSchema.safeParse({
-        teamId: '10',
+        teamId: '22222222-2222-4222-8222-222222222222',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
-        teamId: 10,
+        teamId: '22222222-2222-4222-8222-222222222222',
       });
     });
 
@@ -114,13 +114,13 @@ describe('Analytics request validation', () => {
     test('accepts and converts valid query values', () => {
       const result = upcomingDeadlinesQuerySchema.safeParse({
         days: '14',
-        team_id: '2',
+        team_id: '33333333-3333-4333-8333-333333333333',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
         days: 14,
-        team_id: 2,
+        team_id: '33333333-3333-4333-8333-333333333333',
       });
     });
 

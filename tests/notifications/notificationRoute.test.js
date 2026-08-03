@@ -144,7 +144,7 @@ describe('Notification route', () => {
 
     const payload = {
       type: 'task_assigned',
-      task_id: 15,
+      task_id: '11111111-1111-4111-8111-111111111111',
     };
 
     enqueueNotificationMock.mockReturnValue({
@@ -204,14 +204,14 @@ describe('Notification route', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         type: 'task_completed',
-        task_id: '25',
+        task_id: '22222222-2222-4222-8222-222222222222',
       });
 
     expect(response.status).toBe(202);
 
     expect(enqueueNotificationMock).toHaveBeenCalledWith({
       type: 'task_completed',
-      task_id: 25,
+      task_id: '22222222-2222-4222-8222-222222222222',
     });
   });
 });

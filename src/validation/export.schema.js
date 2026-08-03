@@ -2,10 +2,10 @@ import { z } from 'zod';
 
 export const supportedExportFormats = Object.freeze(['csv', 'json', 'xlsx']);
 
-const positiveInteger = z.coerce
-  .number()
-  .int('Expected an integer.')
-  .positive('Expected a positive integer.');
+const teamIdentifierSchema = z
+  .string()
+  .trim()
+  .uuid('Expected a valid team UUID.');
 
 export const exportFormatSchema = z.object({
   format: z.enum(supportedExportFormats, {
@@ -14,15 +14,15 @@ export const exportFormatSchema = z.object({
 });
 
 export const taskExportQuerySchema = z.object({
-  team_id: positiveInteger.optional(),
+  team_id: teamIdentifierSchema.optional(),
 });
 
 export const analyticsSummaryExportQuerySchema = z.object({
-  team_id: positiveInteger.optional(),
+  team_id: teamIdentifierSchema.optional(),
 });
 
 export const deadlineExportQuerySchema = z.object({
-  team_id: positiveInteger.optional(),
+  team_id: teamIdentifierSchema.optional(),
 
   days: z.coerce
     .number()

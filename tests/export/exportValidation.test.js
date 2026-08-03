@@ -44,12 +44,12 @@ describe('Export request validation', () => {
 
     test('accepts and converts a valid team ID', () => {
       const result = taskExportQuerySchema.safeParse({
-        team_id: '12',
+        team_id: '11111111-1111-4111-8111-111111111111',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
-        team_id: 12,
+        team_id: '11111111-1111-4111-8111-111111111111',
       });
     });
 
@@ -70,12 +70,12 @@ describe('Export request validation', () => {
   describe('analytics summary export query', () => {
     test('accepts an optional team filter', () => {
       const result = analyticsSummaryExportQuerySchema.safeParse({
-        team_id: '3',
+        team_id: '22222222-2222-4222-8222-222222222222',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
-        team_id: 3,
+        team_id: '22222222-2222-4222-8222-222222222222',
       });
     });
 
@@ -100,13 +100,13 @@ describe('Export request validation', () => {
 
     test('accepts and converts valid filters', () => {
       const result = deadlineExportQuerySchema.safeParse({
-        team_id: '2',
+        team_id: '33333333-3333-4333-8333-333333333333',
         days: '30',
       });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
-        team_id: 2,
+        team_id: '33333333-3333-4333-8333-333333333333',
         days: 30,
       });
     });

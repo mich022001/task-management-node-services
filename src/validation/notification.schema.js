@@ -5,7 +5,7 @@ const notificationTypes = ['task_assigned', 'task_completed', 'custom'];
 const taskNotificationSchema = z.object({
   type: z.enum(['task_assigned', 'task_completed']),
 
-  task_id: z.coerce.number().int().positive(),
+  task_id: z.string().trim().uuid('Task ID must be a valid UUID.'),
 
   recipient_email: z.email().optional(),
 
