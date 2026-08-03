@@ -14,6 +14,70 @@ function calculatePercentage(value, total) {
   return Number(((value / total) * 100).toFixed(2));
 }
 
+function calculateAverage(values) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+
+  return Number((total / values.length).toFixed(2));
+}
+
+function getCompletionDurationDays(task) {
+  if (task.status !== 'completed' || !task.created_at || !task.completed_at) {
+    return null;
+  }
+
+  const createdAt = new Date(task.created_at);
+  const completedAt = new Date(task.completed_at);
+
+  const createdTime = createdAt.getTime();
+  const completedTime = completedAt.getTime();
+
+  if (
+    Number.isNaN(createdTime) ||
+    Number.isNaN(completedTime) ||
+    completedTime < createdTime
+  ) {
+    return null;
+  }
+
+  return (completedTime - createdTime) / (24 * 60 * 60 * 1000);
+}
+
+function buildCompletionMetrics(tasks) {
+  const completionDurations = [];
+  const durationsByPriority = Object.fromEntries(
+    TASK_PRIORITIES.map((priority) => [priority, []]),
+  );
+
+  for (const task of tasks) {
+    const durationDays = getCompletionDurationDays(task);
+
+    if (durationDays === null) {
+      continue;
+    }
+
+    completionDurations.push(durationDays);
+
+    if (Object.hasOwn(durationsByPriority, task.priority)) {
+      durationsByPriority[task.priority].push(durationDays);
+    }
+  }
+
+  return {
+    average_completion_days: calculateAverage(completionDurations),
+
+    average_completion_days_by_priority: Object.fromEntries(
+      TASK_PRIORITIES.map((priority) => [
+        priority,
+        calculateAverage(durationsByPriority[priority]),
+      ]),
+    ),
+  };
+}
+
 function isTaskOverdue(task, currentTime) {
   if (!task.due_date) {
     return false;
@@ -78,6 +142,7 @@ export function buildTaskSummary(tasks, { teamIds, now = new Date() } = {}) {
     completed_tasks: completedTasks,
     overdue_tasks: overdueTasks,
     completion_rate: calculatePercentage(completedTasks, totalTasks),
+    ...buildCompletionMetrics(filteredTasks),
   };
 }
 
@@ -116,6 +181,14 @@ export function buildTeamProductivity(team, tasks, { now = new Date() } = {}) {
       (task) => task.status === 'completed',
     ).length;
 
+    const memberPriority = createZeroCounts(TASK_PRIORITIES);
+
+    for (const task of memberTasks) {
+      if (Object.hasOwn(memberPriority, task.priority)) {
+        memberPriority[task.priority] += 1;
+      }
+    }
+
     return {
       user_id: member.id,
       name: member.name,
@@ -127,6 +200,8 @@ export function buildTeamProductivity(team, tasks, { now = new Date() } = {}) {
         memberCompletedTasks,
         memberTasks.length,
       ),
+      priority: memberPriority,
+      ...buildCompletionMetrics(memberTasks),
     };
   });
 
@@ -144,6 +219,7 @@ export function buildTeamProductivity(team, tasks, { now = new Date() } = {}) {
       cancelled_tasks: status.cancelled,
       overdue_tasks: overdueTasks,
       completion_rate: calculatePercentage(completedTasks, totalTasks),
+      ...buildCompletionMetrics(teamTasks),
     },
 
     members,

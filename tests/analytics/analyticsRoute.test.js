@@ -46,6 +46,7 @@ function createTask(overrides = {}) {
     assigned_to: 3,
     created_by: 2,
     due_date: null,
+    created_at: '2026-08-01T12:00:00.000Z',
     completed_at: null,
     ...overrides,
   };
@@ -218,6 +219,12 @@ describe('Analytics routes', () => {
         completed_tasks: 1,
         overdue_tasks: 0,
         completion_rate: 50,
+        average_completion_days: 0,
+        average_completion_days_by_priority: {
+          low: 0,
+          medium: 0,
+          high: 0,
+        },
       },
       meta: {
         cached: false,

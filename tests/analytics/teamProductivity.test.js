@@ -38,6 +38,7 @@ function createTask(overrides = {}) {
     assigned_to: 3,
     created_by: 2,
     due_date: null,
+    created_at: '2026-08-01T12:00:00.000Z',
     completed_at: null,
     ...overrides,
   };
@@ -173,6 +174,12 @@ describe('Team productivity analytics', () => {
       cancelled_tasks: 0,
       overdue_tasks: 0,
       completion_rate: 0,
+      average_completion_days: 0,
+      average_completion_days_by_priority: {
+        low: 0,
+        medium: 0,
+        high: 0,
+      },
     });
   });
 
@@ -304,6 +311,104 @@ describe('Team productivity analytics', () => {
     expect(manager.assigned_tasks).toBe(0);
     expect(manager.completed_tasks).toBe(0);
     expect(manager.completion_rate).toBe(0);
+  });
+
+  test('reports team completion duration metrics by priority', () => {
+    const tasks = [
+      createTask({
+        id: 1,
+        status: 'completed',
+        priority: 'low',
+        created_at: '2026-08-01T00:00:00.000Z',
+        completed_at: '2026-08-02T00:00:00.000Z',
+      }),
+      createTask({
+        id: 2,
+        status: 'completed',
+        priority: 'high',
+        created_at: '2026-08-01T00:00:00.000Z',
+        completed_at: '2026-08-05T00:00:00.000Z',
+      }),
+    ];
+
+    const result = buildTeamProductivity(createTeam(), tasks, {
+      now: currentTime,
+    });
+
+    expect(result.summary.average_completion_days).toBe(2.5);
+
+    expect(result.summary.average_completion_days_by_priority).toEqual({
+      low: 1,
+      medium: 0,
+      high: 4,
+    });
+  });
+
+  test('reports assigned task priority counts per member', () => {
+    const tasks = [
+      createTask({
+        id: 1,
+        assigned_to: 3,
+        priority: 'low',
+      }),
+      createTask({
+        id: 2,
+        assigned_to: 3,
+        priority: 'high',
+      }),
+      createTask({
+        id: 3,
+        assigned_to: 3,
+        priority: 'high',
+      }),
+    ];
+
+    const result = buildTeamProductivity(createTeam(), tasks, {
+      now: currentTime,
+    });
+
+    const member = result.members.find((item) => item.user_id === 3);
+
+    expect(member.priority).toEqual({
+      low: 1,
+      medium: 0,
+      high: 2,
+    });
+  });
+
+  test('reports completion duration metrics per member', () => {
+    const tasks = [
+      createTask({
+        id: 1,
+        assigned_to: 3,
+        status: 'completed',
+        priority: 'medium',
+        created_at: '2026-08-01T00:00:00.000Z',
+        completed_at: '2026-08-03T00:00:00.000Z',
+      }),
+      createTask({
+        id: 2,
+        assigned_to: 3,
+        status: 'completed',
+        priority: 'medium',
+        created_at: '2026-08-01T00:00:00.000Z',
+        completed_at: '2026-08-05T00:00:00.000Z',
+      }),
+    ];
+
+    const result = buildTeamProductivity(createTeam(), tasks, {
+      now: currentTime,
+    });
+
+    const member = result.members.find((item) => item.user_id === 3);
+
+    expect(member.average_completion_days).toBe(3);
+
+    expect(member.average_completion_days_by_priority).toEqual({
+      low: 0,
+      medium: 3,
+      high: 0,
+    });
   });
 
   test('ignores tasks belonging to another team', () => {
