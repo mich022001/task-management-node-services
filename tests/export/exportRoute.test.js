@@ -3,6 +3,7 @@ import request from 'supertest';
 
 const getTasksMock = jest.fn();
 const getTeamMock = jest.fn();
+const getTeamsMock = jest.fn();
 const getAuthorizedTeamIdsMock = jest.fn();
 const assertTeamAccessMock = jest.fn();
 const resolveAnalyticsTeamIdsMock = jest.fn();
@@ -19,7 +20,7 @@ jest.unstable_mockModule('../../src/clients/laravel/taskClient.js', () => ({
 
 jest.unstable_mockModule('../../src/clients/laravel/teamClient.js', () => ({
   getTeam: getTeamMock,
-  getTeams: jest.fn(),
+  getTeams: getTeamsMock,
 }));
 
 jest.unstable_mockModule(
@@ -67,6 +68,7 @@ describe('Export routes', () => {
   beforeEach(() => {
     getTasksMock.mockReset();
     getTeamMock.mockReset();
+    getTeamsMock.mockReset();
     getAuthorizedTeamIdsMock.mockReset();
     assertTeamAccessMock.mockReset();
     resolveAnalyticsTeamIdsMock.mockReset();
@@ -79,6 +81,23 @@ describe('Export routes', () => {
     getAuthorizedTeamIdsMock.mockResolvedValue(undefined);
 
     resolveAnalyticsTeamIdsMock.mockReturnValue(undefined);
+
+    getTeamsMock.mockResolvedValue({
+      data: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Engineering',
+        },
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          name: 'Operations',
+        },
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
 
     getTeamMock.mockResolvedValue({
       data: {
@@ -127,15 +146,49 @@ describe('Export routes', () => {
     expect(getTasksMock).not.toHaveBeenCalled();
   });
 
-  test('rejects a team member', async () => {
+  test('exports only the authenticated team members own tasks', async () => {
+    const memberId = '33333333-3333-4333-8333-333333333333';
+
     const token = createToken({
-      sub: '3',
+      sub: memberId,
       role: 'team_member',
     });
 
     const response = await request(app)
-      .get('/api/v1/export/tasks/csv')
-      .set('Authorization', `Bearer ${token}`);
+      .post('/api/v1/export/tasks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        format: 'csv',
+        filters: {
+          status: 'completed',
+        },
+      });
+
+    expect(response.status).toBe(200);
+
+    expect(getTasksMock).toHaveBeenCalledWith({
+      status: 'completed',
+      assigned_to: memberId,
+      page: 1,
+      per_page: 100,
+    });
+  });
+
+  test('rejects a team member exporting another person', async () => {
+    const token = createToken({
+      sub: '33333333-3333-4333-8333-333333333333',
+      role: 'team_member',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/export/tasks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        format: 'json',
+        filters: {
+          assigned_to: '44444444-4444-4444-8444-444444444444',
+        },
+      });
 
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({
@@ -240,58 +293,65 @@ describe('Export routes', () => {
     expect(buildXLSXMock).toHaveBeenCalledTimes(1);
   });
 
-  test('passes a team filter to Laravel and authorization', async () => {
+  test('passes an authorized manager team filter to Laravel', async () => {
     const token = createToken({
-      sub: '2',
+      sub: '22222222-2222-4222-8222-222222222222',
       role: 'manager',
     });
 
-    getAuthorizedTeamIdsMock.mockResolvedValue([1, 2]);
-
-    resolveAnalyticsTeamIdsMock.mockReturnValue([1]);
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     const response = await request(app)
-      .get(
-        '/api/v1/export/tasks/csv?team_id=11111111-1111-4111-8111-111111111111',
-      )
+      .get(`/api/v1/export/tasks/csv?team_id=${teamId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
 
-    expect(resolveAnalyticsTeamIdsMock).toHaveBeenCalledWith({
-      authenticatedUser: expect.objectContaining({
-        id: '2',
-        role: 'manager',
-      }),
-      requestedTeamId: '11111111-1111-4111-8111-111111111111',
-      authorizedTeamIds: [1, 2],
+    expect(getTeamsMock).toHaveBeenCalledWith({
+      managed_by: '22222222-2222-4222-8222-222222222222',
+      page: 1,
+      per_page: 100,
     });
 
     expect(getTasksMock).toHaveBeenCalledWith({
-      team_id: '11111111-1111-4111-8111-111111111111',
+      team_id: teamId,
       page: 1,
       per_page: 100,
     });
   });
 
-  test('filters manager exports to authorized teams', async () => {
+  test('filters manager exports to handled teams', async () => {
     const token = createToken({
-      sub: '2',
+      sub: '22222222-2222-4222-8222-222222222222',
       role: 'manager',
     });
 
-    getAuthorizedTeamIdsMock.mockResolvedValue([1]);
-    resolveAnalyticsTeamIdsMock.mockReturnValue([1]);
+    const authorizedTeamId = '11111111-1111-4111-8111-111111111111';
+
+    const unauthorizedTeamId = '99999999-9999-4999-8999-999999999999';
+
+    getTeamsMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: authorizedTeamId,
+          name: 'Engineering',
+        },
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
 
     getTasksMock.mockResolvedValue({
       data: [
         createTask({
-          id: 1,
-          team_id: 1,
+          id: 'task-1',
+          team_id: authorizedTeamId,
         }),
         createTask({
-          id: 2,
-          team_id: 9,
+          id: 'task-2',
+          team_id: unauthorizedTeamId,
         }),
       ],
       meta: {
@@ -310,8 +370,8 @@ describe('Export routes', () => {
       expect.objectContaining({
         data: [
           expect.objectContaining({
-            id: 1,
-            team_id: 1,
+            id: 'task-1',
+            team_id: authorizedTeamId,
           }),
         ],
         meta: {
@@ -420,6 +480,115 @@ describe('Export routes', () => {
       code: 'LARAVEL_UNAVAILABLE',
     });
   });
+  test('exports tasks through the required POST contract', async () => {
+    const token = createToken({
+      role: 'admin',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/export/tasks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        format: 'csv',
+        team_id: '11111111-1111-4111-8111-111111111111',
+        filters: {
+          status: 'completed',
+          priority: 'high',
+          assigned_to: '33333333-3333-4333-8333-333333333333',
+          date_from: '2026-08-01',
+          date_to: '2026-08-31',
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/csv');
+
+    expect(getTasksMock).toHaveBeenCalledWith({
+      team_id: '11111111-1111-4111-8111-111111111111',
+      status: 'completed',
+      priority: 'high',
+      assigned_to: '33333333-3333-4333-8333-333333333333',
+      date_from: '2026-08-01',
+      date_to: '2026-08-31',
+      page: 1,
+      per_page: 100,
+    });
+
+    expect(logExportSuccessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: 'tasks',
+        format: 'csv',
+        filters: expect.objectContaining({
+          team_id: '11111111-1111-4111-8111-111111111111',
+          status: 'completed',
+          priority: 'high',
+          assigned_to: '33333333-3333-4333-8333-333333333333',
+          date_from: '2026-08-01',
+          date_to: '2026-08-31',
+        }),
+      }),
+    );
+  });
+
+  test('rejects an unsupported POST export format', async () => {
+    const token = createToken({
+      role: 'admin',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/export/tasks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        format: 'pdf',
+        filters: {},
+      });
+
+    expect(response.status).toBe(422);
+
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+    });
+
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects a reversed task export date range', async () => {
+    const token = createToken({
+      role: 'admin',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/export/tasks')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        format: 'json',
+        filters: {
+          date_from: '2026-08-31',
+          date_to: '2026-08-01',
+        },
+      });
+
+    expect(response.status).toBe(422);
+
+    expect(response.body.errors).toEqual(
+      expect.objectContaining({
+        'filters.date_to': expect.any(Array),
+      }),
+    );
+
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects an unauthenticated POST task export', async () => {
+    const response = await request(app).post('/api/v1/export/tasks').send({
+      format: 'csv',
+      filters: {},
+    });
+
+    expect(response.status).toBe(401);
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
   test('exports task summary as CSV', async () => {
     const token = createToken({
       role: 'admin',
@@ -673,11 +842,9 @@ describe('Export routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
-    const memberId =
-      '33333333-3333-4333-8333-333333333333';
+    const memberId = '33333333-3333-4333-8333-333333333333';
 
     getTasksMock.mockResolvedValue({
       data: [
@@ -747,11 +914,9 @@ describe('Export routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
-    const memberId =
-      '33333333-3333-4333-8333-333333333333';
+    const memberId = '33333333-3333-4333-8333-333333333333';
 
     getTasksMock.mockResolvedValue({
       data: [
@@ -768,10 +933,7 @@ describe('Export routes', () => {
     });
 
     const response = await request(app)
-      .get(
-        '/api/v1/export/team-report/csv' +
-          `?team_id=${teamId}`,
-      )
+      .get('/api/v1/export/team-report/csv' + `?team_id=${teamId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -796,14 +958,10 @@ describe('Export routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     const response = await request(app)
-      .get(
-        '/api/v1/export/team-report/xlsx' +
-          `?team_id=${teamId}`,
-      )
+      .get('/api/v1/export/team-report/xlsx' + `?team_id=${teamId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -850,8 +1008,7 @@ describe('Export routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     const response = await request(app)
       .get(
@@ -877,14 +1034,10 @@ describe('Export routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     const response = await request(app)
-      .get(
-        '/api/v1/export/team-report/json' +
-          `?team_id=${teamId}`,
-      )
+      .get('/api/v1/export/team-report/json' + `?team_id=${teamId}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(200);
@@ -900,5 +1053,4 @@ describe('Export routes', () => {
       }),
     );
   });
-
 });

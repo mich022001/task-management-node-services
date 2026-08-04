@@ -12,6 +12,7 @@ import {
   resolveAnalyticsTeamIds,
 } from '../services/analyticsAuthorization.service.js';
 import { buildCSV, buildJSON, buildXLSX } from '../services/export.service.js';
+import { resolveTaskExportScope } from '../services/exportAuthorization.service.js';
 import {
   logExportFailure,
   logExportSuccess,
@@ -21,6 +22,7 @@ import {
   deadlineExportQuerySchema,
   exportFormatSchema,
   formatExportValidationErrors,
+  taskExportBodySchema,
   taskExportQuerySchema,
   teamReportExportQuerySchema,
 } from '../validation/export.schema.js';
@@ -483,50 +485,23 @@ function flattenTeamReportMembers(report) {
     member_email: member.email,
     member_role: member.member_role,
     assigned_tasks: member.summary.assigned_tasks,
-    completed_tasks:
-      member.summary.completed_tasks,
-    unfinished_tasks:
-      member.summary.unfinished_tasks,
-    cancelled_tasks:
-      member.summary.cancelled_tasks,
-    overdue_tasks:
-      member.summary.overdue_tasks,
-    completion_rate:
-      member.summary.completion_rate,
-    average_completion_days:
-      member.summary.average_completion_days,
+    completed_tasks: member.summary.completed_tasks,
+    unfinished_tasks: member.summary.unfinished_tasks,
+    cancelled_tasks: member.summary.cancelled_tasks,
+    overdue_tasks: member.summary.overdue_tasks,
+    completion_rate: member.summary.completion_rate,
+    average_completion_days: member.summary.average_completion_days,
   }));
 }
 
 function flattenTeamReportTasks(report) {
-  const memberRows = report.members.flatMap(
-    (member) =>
-      member.tasks.map((task) => ({
-        team_id: report.team.id,
-        team_name: report.team.name,
-        member_id: member.user_id,
-        member_name: member.name,
-        member_email: member.email,
-        task_id: task.id,
-        task_title: task.title,
-        description: task.description,
-        status: task.status,
-        priority: task.priority,
-        created_at: task.created_at,
-        due_date: task.due_date,
-        completed_at: task.completed_at,
-        completion_days: task.completion_days,
-        is_overdue: task.is_overdue,
-      })),
-  );
-
-  const unassignedRows = report.unassigned_tasks.map(
-    (task) => ({
+  const memberRows = report.members.flatMap((member) =>
+    member.tasks.map((task) => ({
       team_id: report.team.id,
       team_name: report.team.name,
-      member_id: null,
-      member_name: 'Unassigned',
-      member_email: null,
+      member_id: member.user_id,
+      member_name: member.name,
+      member_email: member.email,
       task_id: task.id,
       task_title: task.title,
       description: task.description,
@@ -537,13 +512,28 @@ function flattenTeamReportTasks(report) {
       completed_at: task.completed_at,
       completion_days: task.completion_days,
       is_overdue: task.is_overdue,
-    }),
+    })),
   );
 
-  return [
-    ...memberRows,
-    ...unassignedRows,
-  ];
+  const unassignedRows = report.unassigned_tasks.map((task) => ({
+    team_id: report.team.id,
+    team_name: report.team.name,
+    member_id: null,
+    member_name: 'Unassigned',
+    member_email: null,
+    task_id: task.id,
+    task_title: task.title,
+    description: task.description,
+    status: task.status,
+    priority: task.priority,
+    created_at: task.created_at,
+    due_date: task.due_date,
+    completed_at: task.completed_at,
+    completion_days: task.completion_days,
+    is_overdue: task.is_overdue,
+  }));
+
+  return [...memberRows, ...unassignedRows];
 }
 
 async function buildFormattedExport({
@@ -613,40 +603,59 @@ export async function exportTasks(req, res, next) {
   let auditContext = createAuditContext({
     user: req.user,
     resource: 'tasks',
-    format: req.params.format ?? 'unknown',
+    format:
+      req.method === 'POST'
+        ? (req.body?.format ?? 'unknown')
+        : (req.params.format ?? 'unknown'),
   });
 
   try {
-    const params = validateRequest(exportFormatSchema, req.params);
-    const query = validateRequest(taskExportQuerySchema, req.query);
+    let format;
+    let filters;
 
-    const teamIds = await resolveExportTeamIds(req.user, query.team_id);
+    if (req.method === 'POST') {
+      const requestData = validateRequest(taskExportBodySchema, req.body);
+
+      format = requestData.format;
+      filters = requestData.filters;
+    } else {
+      const params = validateRequest(exportFormatSchema, req.params);
+
+      format = params.format;
+      filters = validateRequest(taskExportQuerySchema, req.query);
+    }
+
+    const scope = await resolveTaskExportScope(req.user, filters);
+
+    const effectiveFilters = scope.filters;
+    const teamIds = scope.teamIds;
 
     auditContext = createAuditContext({
       user: req.user,
       resource: 'tasks',
-      format: params.format,
+      format,
       filters: {
-        team_id: query.team_id ?? null,
+        ...effectiveFilters,
         authorized_team_ids: teamIds ?? null,
       },
     });
 
-    const taskQuery =
-      query.team_id === undefined
-        ? {}
-        : {
-            team_id: query.team_id,
-          };
+    const taskQuery = Object.fromEntries(
+      Object.entries(effectiveFilters).filter(
+        ([, value]) => value !== undefined && value !== null && value !== '',
+      ),
+    );
 
     const tasks = await getAllTasks(taskQuery);
+
     const scopedTasks = filterTasksByTeamIds(tasks, teamIds);
 
-    const filename = buildFilename('tasks', params.format);
+    const filename = buildFilename('tasks', format);
+
     auditContext.filename = filename;
 
     const buffer = await buildFormattedExport({
-      format: params.format,
+      format,
       worksheetName: 'Tasks',
       columns: taskColumns,
       rows: scopedTasks,
@@ -660,7 +669,7 @@ export async function exportTasks(req, res, next) {
     });
 
     setDownloadHeaders(res, {
-      format: params.format,
+      format,
       filename,
       contentLength: buffer.length,
     });
@@ -825,24 +834,13 @@ export async function exportTeamReport(req, res, next) {
   });
 
   try {
-    const params = validateRequest(
-      exportFormatSchema,
-      req.params,
-    );
+    const params = validateRequest(exportFormatSchema, req.params);
 
-    const query = validateRequest(
-      teamReportExportQuerySchema,
-      req.query,
-    );
+    const query = validateRequest(teamReportExportQuerySchema, req.query);
 
-    const authorizedTeamIds =
-      await getAuthorizedTeamIds(req.user);
+    const authorizedTeamIds = await getAuthorizedTeamIds(req.user);
 
-    assertTeamAccess(
-      req.user,
-      query.team_id,
-      authorizedTeamIds,
-    );
+    assertTeamAccess(req.user, query.team_id, authorizedTeamIds);
 
     auditContext = createAuditContext({
       user: req.user,
@@ -869,26 +867,19 @@ export async function exportTeamReport(req, res, next) {
     const team = teamResponse.data?.team;
 
     if (!team) {
-      throw new AppError(
-        'Laravel returned an invalid team response.',
-        {
-          statusCode: 502,
-          code: 'INVALID_LARAVEL_RESPONSE',
-        },
-      );
+      throw new AppError('Laravel returned an invalid team response.', {
+        statusCode: 502,
+        code: 'INVALID_LARAVEL_RESPONSE',
+      });
     }
 
     const teamMemberIds = new Set(
-      (team.members ?? []).map((member) =>
-        String(member.id),
-      ),
+      (team.members ?? []).map((member) => String(member.id)),
     );
 
-    const invalidMemberIds =
-      query.member_ids.filter(
-        (memberId) =>
-          !teamMemberIds.has(String(memberId)),
-      );
+    const invalidMemberIds = query.member_ids.filter(
+      (memberId) => !teamMemberIds.has(String(memberId)),
+    );
 
     if (invalidMemberIds.length > 0) {
       throw new AppError(
@@ -914,20 +905,13 @@ export async function exportTeamReport(req, res, next) {
       priorities: query.priorities,
     });
 
-    const summaryRows = [
-      flattenTeamReportSummary(report),
-    ];
+    const summaryRows = [flattenTeamReportSummary(report)];
 
-    const memberRows =
-      flattenTeamReportMembers(report);
+    const memberRows = flattenTeamReportMembers(report);
 
-    const taskRows =
-      flattenTeamReportTasks(report);
+    const taskRows = flattenTeamReportTasks(report);
 
-    const filename = buildFilename(
-      'team-report',
-      params.format,
-    );
+    const filename = buildFilename('team-report', params.format);
 
     auditContext.filename = filename;
 

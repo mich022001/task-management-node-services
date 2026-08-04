@@ -13,9 +13,94 @@ export const exportFormatSchema = z.object({
   }),
 });
 
-export const taskExportQuerySchema = z.object({
-  team_id: teamIdentifierSchema.optional(),
-});
+const taskExportStatusSchema = z.enum([
+  'pending',
+  'in_progress',
+  'completed',
+  'cancelled',
+]);
+
+const taskExportPrioritySchema = z.enum(['low', 'medium', 'high']);
+
+const taskExportDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use the YYYY-MM-DD format.')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number);
+
+    const parsedDate = new Date(Date.UTC(year, month - 1, day));
+
+    return (
+      parsedDate.getUTCFullYear() === year &&
+      parsedDate.getUTCMonth() === month - 1 &&
+      parsedDate.getUTCDate() === day
+    );
+  }, 'Date must be a valid calendar date.');
+
+const taskExportNestedFiltersSchema = z
+  .object({
+    status: taskExportStatusSchema.optional(),
+    priority: taskExportPrioritySchema.optional(),
+    assigned_to: teamIdentifierSchema.optional(),
+    date_from: taskExportDateSchema.optional(),
+    date_to: taskExportDateSchema.optional(),
+  })
+  .superRefine((filters, context) => {
+    if (
+      filters.date_from &&
+      filters.date_to &&
+      filters.date_from > filters.date_to
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['date_to'],
+        message: 'date_to must not be earlier than date_from.',
+      });
+    }
+  });
+
+export const taskExportQuerySchema = z
+  .object({
+    team_id: teamIdentifierSchema.optional(),
+    status: taskExportStatusSchema.optional(),
+    priority: taskExportPrioritySchema.optional(),
+    assigned_to: teamIdentifierSchema.optional(),
+    date_from: taskExportDateSchema.optional(),
+    date_to: taskExportDateSchema.optional(),
+  })
+  .superRefine((filters, context) => {
+    if (
+      filters.date_from &&
+      filters.date_to &&
+      filters.date_from > filters.date_to
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['date_to'],
+        message: 'date_to must not be earlier than date_from.',
+      });
+    }
+  });
+
+export const taskExportBodySchema = z
+  .object({
+    team_id: teamIdentifierSchema.optional(),
+
+    format: z.enum(supportedExportFormats, {
+      message: 'Unsupported export format.',
+    }),
+
+    filters: taskExportNestedFiltersSchema.default({}),
+  })
+  .transform((request) => ({
+    format: request.format,
+
+    filters: {
+      ...request.filters,
+      team_id: request.team_id,
+    },
+  }));
 
 export const analyticsSummaryExportQuerySchema = z.object({
   team_id: teamIdentifierSchema.optional(),
@@ -35,32 +120,20 @@ export const deadlineExportQuerySchema = z.object({
 const exportReportDateSchema = z
   .string()
   .trim()
-  .regex(
-    /^\d{4}-\d{2}-\d{2}$/,
-    'Date must use the YYYY-MM-DD format.',
-  )
-  .refine(
-    (value) => {
-      const [year, month, day] = value
-        .split('-')
-        .map(Number);
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use the YYYY-MM-DD format.')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number);
 
-      const parsedDate = new Date(
-        Date.UTC(year, month - 1, day),
-      );
+    const parsedDate = new Date(Date.UTC(year, month - 1, day));
 
-      return (
-        parsedDate.getUTCFullYear() === year &&
-        parsedDate.getUTCMonth() === month - 1 &&
-        parsedDate.getUTCDate() === day
-      );
-    },
-    'Date must be a valid calendar date.',
-  );
+    return (
+      parsedDate.getUTCFullYear() === year &&
+      parsedDate.getUTCMonth() === month - 1 &&
+      parsedDate.getUTCDate() === day
+    );
+  }, 'Date must be a valid calendar date.');
 
-const exportCommaSeparatedValuesSchema = (
-  itemSchema,
-) =>
+const exportCommaSeparatedValuesSchema = (itemSchema) =>
   z
     .union([z.string(), z.array(z.string())])
     .optional()
@@ -69,18 +142,14 @@ const exportCommaSeparatedValuesSchema = (
         return [];
       }
 
-      const rawValues = Array.isArray(value)
-        ? value
-        : [value];
+      const rawValues = Array.isArray(value) ? value : [value];
 
       const values = rawValues
         .flatMap((item) => item.split(','))
         .map((item) => item.trim())
         .filter(Boolean);
 
-      const parsed = z.array(itemSchema).safeParse(
-        values,
-      );
+      const parsed = z.array(itemSchema).safeParse(values);
 
       if (!parsed.success) {
         for (const issue of parsed.error.issues) {
@@ -104,45 +173,25 @@ export const teamReportExportQuerySchema = z
     date_to: exportReportDateSchema.optional(),
 
     date_field: z
-      .enum([
-        'created_at',
-        'due_date',
-        'completed_at',
-      ])
+      .enum(['created_at', 'due_date', 'completed_at'])
       .default('due_date'),
 
-    member_ids: exportCommaSeparatedValuesSchema(
-      teamIdentifierSchema,
-    ),
+    member_ids: exportCommaSeparatedValuesSchema(teamIdentifierSchema),
 
     statuses: exportCommaSeparatedValuesSchema(
-      z.enum([
-        'pending',
-        'in_progress',
-        'completed',
-        'cancelled',
-      ]),
+      z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
     ),
 
     priorities: exportCommaSeparatedValuesSchema(
-      z.enum([
-        'low',
-        'medium',
-        'high',
-      ]),
+      z.enum(['low', 'medium', 'high']),
     ),
   })
   .superRefine((query, context) => {
-    if (
-      query.date_from &&
-      query.date_to &&
-      query.date_from > query.date_to
-    ) {
+    if (query.date_from && query.date_to && query.date_from > query.date_to) {
       context.addIssue({
         code: 'custom',
         path: ['date_to'],
-        message:
-          'date_to must not be earlier than date_from.',
+        message: 'date_to must not be earlier than date_from.',
       });
     }
   });
