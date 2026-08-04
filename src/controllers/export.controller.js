@@ -13,6 +13,7 @@ import {
 } from '../services/analyticsAuthorization.service.js';
 import { buildCSV, buildJSON, buildXLSX } from '../services/export.service.js';
 import { resolveTaskExportScope } from '../services/exportAuthorization.service.js';
+import { buildManagementReport } from '../services/taskManagementReport.service.js';
 import {
   logExportFailure,
   logExportSuccess,
@@ -27,67 +28,50 @@ import {
   teamReportExportQuerySchema,
 } from '../validation/export.schema.js';
 
-const taskColumns = Object.freeze([
+const managementTaskColumns = Object.freeze([
+  { header: 'Task', key: 'task', width: 40 },
+  { header: 'Team', key: 'team', width: 28 },
+  { header: 'Severity', key: 'severity', width: 14 },
+  { header: 'Current Status', key: 'status', width: 18 },
+  { header: 'Created By', key: 'created_by', width: 28 },
+  { header: 'Assigned To', key: 'assigned_to', width: 28 },
+  { header: 'Created At', key: 'created_at', width: 24 },
+  { header: 'Due Date', key: 'due_date', width: 24 },
+  { header: 'Completed At', key: 'completed_at', width: 24 },
+  { header: 'Time to Complete', key: 'time_to_complete', width: 20 },
+  { header: 'Current Age', key: 'current_age', width: 18 },
+  { header: 'Last Updated', key: 'last_updated_at', width: 24 },
+  { header: 'Last Updated By', key: 'last_updated_by', width: 28 },
+  { header: 'Latest Update', key: 'latest_update', width: 60 },
+  { header: 'Status Note', key: 'latest_status_note', width: 50 },
+  { header: 'Overdue', key: 'overdue', width: 12 },
+]);
+
+const managementSummaryColumns = Object.freeze([
+  { header: 'Total Tasks', key: 'total_tasks', width: 15 },
+  { header: 'Pending', key: 'pending_tasks', width: 15 },
+  { header: 'In Progress', key: 'in_progress_tasks', width: 15 },
+  { header: 'Completed', key: 'completed_tasks', width: 15 },
+  { header: 'Cancelled', key: 'cancelled_tasks', width: 15 },
+  { header: 'Overdue', key: 'overdue_tasks', width: 15 },
+  { header: 'High Severity', key: 'high_severity_tasks', width: 18 },
   {
-    header: 'ID',
-    key: 'id',
-    width: 10,
+    header: 'Average Completion Time',
+    key: 'average_completion_time',
+    width: 26,
   },
-  {
-    header: 'Team ID',
-    key: 'team_id',
-    width: 12,
-  },
-  {
-    header: 'Title',
-    key: 'title',
-    width: 35,
-  },
-  {
-    header: 'Description',
-    key: 'description',
-    width: 50,
-  },
-  {
-    header: 'Status',
-    key: 'status',
-    width: 18,
-  },
-  {
-    header: 'Priority',
-    key: 'priority',
-    width: 15,
-  },
-  {
-    header: 'Assigned To',
-    key: 'assigned_to',
-    width: 15,
-  },
-  {
-    header: 'Created By',
-    key: 'created_by',
-    width: 15,
-  },
-  {
-    header: 'Due Date',
-    key: 'due_date',
-    width: 25,
-  },
-  {
-    header: 'Completed At',
-    key: 'completed_at',
-    width: 25,
-  },
-  {
-    header: 'Created At',
-    key: 'created_at',
-    width: 25,
-  },
-  {
-    header: 'Updated At',
-    key: 'updated_at',
-    width: 25,
-  },
+]);
+
+const managementUpdateColumns = Object.freeze([
+  { header: 'Task', key: 'task', width: 40 },
+  { header: 'Team', key: 'team', width: 28 },
+  { header: 'Happened At', key: 'happened_at', width: 24 },
+  { header: 'Performed By', key: 'performed_by', width: 28 },
+  { header: 'Event', key: 'event', width: 20 },
+  { header: 'Update', key: 'update', width: 65 },
+  { header: 'Previous Status', key: 'previous_status', width: 18 },
+  { header: 'New Status', key: 'new_status', width: 18 },
+  { header: 'Note', key: 'note', width: 50 },
 ]);
 
 const taskSummaryColumns = Object.freeze([
@@ -646,27 +630,55 @@ export async function exportTasks(req, res, next) {
       ),
     );
 
-    const tasks = await getAllTasks(taskQuery);
+    const tasks = await getAllTasks({
+      ...taskQuery,
+      include_report_context: true,
+    });
 
     const scopedTasks = filterTasksByTeamIds(tasks, teamIds);
+    const report = buildManagementReport(scopedTasks);
 
-    const filename = buildFilename('tasks', format);
+    const filename = buildFilename('management-task-report', format);
 
     auditContext.filename = filename;
 
-    const buffer = await buildFormattedExport({
-      format,
-      worksheetName: 'Tasks',
-      columns: taskColumns,
-      rows: scopedTasks,
-      jsonPayload: {
-        message: 'Tasks exported successfully.',
-        data: scopedTasks,
+    let buffer;
+
+    if (format === 'csv') {
+      buffer = buildCSV({
+        columns: managementTaskColumns,
+        rows: report.tasks,
+      });
+    } else if (format === 'json') {
+      buffer = buildJSON({
+        message: 'Management task report exported successfully.',
+        data: report,
         meta: {
-          record_count: scopedTasks.length,
+          task_count: report.tasks.length,
+          update_count: report.updates.length,
         },
-      },
-    });
+      });
+    } else {
+      buffer = await buildXLSX({
+        worksheets: [
+          {
+            worksheetName: 'Management Summary',
+            columns: managementSummaryColumns,
+            rows: [report.summary],
+          },
+          {
+            worksheetName: 'Task Report',
+            columns: managementTaskColumns,
+            rows: report.tasks,
+          },
+          {
+            worksheetName: 'Update History',
+            columns: managementUpdateColumns,
+            rows: report.updates,
+          },
+        ],
+      });
+    }
 
     setDownloadHeaders(res, {
       format,
@@ -676,7 +688,7 @@ export async function exportTasks(req, res, next) {
 
     logExportSuccess({
       ...auditContext,
-      recordCount: scopedTasks.length,
+      recordCount: report.tasks.length,
     });
 
     return res.status(200).send(buffer);

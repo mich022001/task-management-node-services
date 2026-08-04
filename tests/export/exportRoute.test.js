@@ -169,6 +169,7 @@ describe('Export routes', () => {
     expect(getTasksMock).toHaveBeenCalledWith({
       status: 'completed',
       assigned_to: memberId,
+      include_report_context: true,
       page: 1,
       per_page: 100,
     });
@@ -245,7 +246,7 @@ describe('Export routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/csv');
     expect(response.headers['content-disposition']).toMatch(
-      /^attachment; filename="tasks-.+\.csv"$/,
+      /^attachment; filename="management-task-report-.+\.csv"$/,
     );
     expect(response.headers['cache-control']).toBe(
       'private, no-store, max-age=0',
@@ -267,7 +268,7 @@ describe('Export routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('application/json');
     expect(response.headers['content-disposition']).toMatch(
-      /^attachment; filename="tasks-.+\.json"$/,
+      /^attachment; filename="management-task-report-.+\.json"$/,
     );
 
     expect(buildJSONMock).toHaveBeenCalledTimes(1);
@@ -287,7 +288,7 @@ describe('Export routes', () => {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     expect(response.headers['content-disposition']).toMatch(
-      /^attachment; filename="tasks-.+\.xlsx"$/,
+      /^attachment; filename="management-task-report-.+\.xlsx"$/,
     );
 
     expect(buildXLSXMock).toHaveBeenCalledTimes(1);
@@ -315,6 +316,7 @@ describe('Export routes', () => {
 
     expect(getTasksMock).toHaveBeenCalledWith({
       team_id: teamId,
+      include_report_context: true,
       page: 1,
       per_page: 100,
     });
@@ -368,15 +370,17 @@ describe('Export routes', () => {
 
     expect(buildJSONMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: [
-          expect.objectContaining({
-            id: 'task-1',
-            team_id: authorizedTeamId,
-          }),
-        ],
-        meta: {
-          record_count: 1,
-        },
+        message: 'Management task report exported successfully.',
+        data: expect.objectContaining({
+          tasks: [
+            expect.objectContaining({
+              task_id: 'task-1',
+            }),
+          ],
+        }),
+        meta: expect.objectContaining({
+          task_count: 1,
+        }),
       }),
     );
   });
@@ -420,10 +424,10 @@ describe('Export routes', () => {
       expect.objectContaining({
         rows: [
           expect.objectContaining({
-            id: 1,
+            task_id: 1,
           }),
           expect.objectContaining({
-            id: 2,
+            task_id: 2,
           }),
         ],
       }),
@@ -510,6 +514,7 @@ describe('Export routes', () => {
       assigned_to: '33333333-3333-4333-8333-333333333333',
       date_from: '2026-08-01',
       date_to: '2026-08-31',
+      include_report_context: true,
       page: 1,
       per_page: 100,
     });
