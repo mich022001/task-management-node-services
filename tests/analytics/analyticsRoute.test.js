@@ -4,6 +4,7 @@ import request from 'supertest';
 const getTasksMock = jest.fn();
 const getTaskMock = jest.fn();
 const getTeamMock = jest.fn();
+const getTeamsMock = jest.fn();
 
 const getAuthorizedTeamIdsMock = jest.fn();
 const assertTeamAccessMock = jest.fn();
@@ -16,6 +17,7 @@ jest.unstable_mockModule('../../src/clients/laravel/taskClient.js', () => ({
 
 jest.unstable_mockModule('../../src/clients/laravel/teamClient.js', () => ({
   getTeam: getTeamMock,
+  getTeams: getTeamsMock,
 }));
 
 jest.unstable_mockModule(
@@ -92,6 +94,7 @@ describe('Analytics routes', () => {
     getTasksMock.mockReset();
     getTaskMock.mockReset();
     getTeamMock.mockReset();
+    getTeamsMock.mockReset();
 
     getAuthorizedTeamIdsMock.mockReset();
     assertTeamAccessMock.mockReset();
@@ -128,6 +131,16 @@ describe('Analytics routes', () => {
     getTeamMock.mockResolvedValue({
       data: {
         team: createTeam(),
+      },
+    });
+
+    getTeamsMock.mockResolvedValue({
+      data: [createTeam()],
+      meta: {
+        current_page: 1,
+        per_page: 100,
+        total: 1,
+        last_page: 1,
       },
     });
   });
@@ -321,6 +334,112 @@ describe('Analytics routes', () => {
     expect(getTasksMock).not.toHaveBeenCalled();
   });
 
+  test('returns team highlights for an admin', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    getTasksMock.mockResolvedValue({
+      data: [
+        createTask({
+          status: 'pending',
+          priority: 'high',
+          due_date: '2000-01-01T00:00:00.000Z',
+        }),
+        createTask({
+          id: 2,
+          status: 'completed',
+          priority: 'medium',
+          completed_at: '2026-08-02T00:00:00.000Z',
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
+
+    const response = await request(app)
+      .get('/api/v1/analytics/teams/summary')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toMatchObject({
+      message:
+        'Team highlights retrieved successfully.',
+      data: {
+        teams: [
+          expect.objectContaining({
+            team_name: 'Engineering',
+            member_count: 2,
+            total_tasks: 2,
+            status: {
+              yet_to_start: 1,
+              in_progress: 0,
+              completed: 1,
+              cancelled: 0,
+            },
+            priority: {
+              low: 0,
+              medium: 1,
+              high: 1,
+            },
+            high_priority: expect.objectContaining({
+              yet_to_start: 1,
+              overdue: 1,
+            }),
+          }),
+        ],
+      },
+      meta: {
+        cached: false,
+      },
+    });
+
+    expect(getTeamsMock).toHaveBeenCalledWith({
+      page: 1,
+      per_page: 100,
+    });
+  });
+
+  test('requests only authorized teams for a manager', async () => {
+    const token = createToken({
+      sub: '2',
+      role: 'manager',
+    });
+
+    getAuthorizedTeamIdsMock.mockResolvedValue([1]);
+
+    const response = await request(app)
+      .get('/api/v1/analytics/teams/summary')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(getTeamsMock).toHaveBeenCalledWith({
+      user_id: '2',
+      page: 1,
+      per_page: 100,
+    });
+  });
+
+  test('rejects team member access to team highlights', async () => {
+    const token = createToken({
+      sub: '3',
+      role: 'team_member',
+    });
+
+    const response = await request(app)
+      .get('/api/v1/analytics/teams/summary')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+    expect(getTeamsMock).not.toHaveBeenCalled();
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
   test('returns team productivity', async () => {
     const token = createToken({
       sub: '1',
@@ -449,6 +568,213 @@ describe('Analytics routes', () => {
       code: 'FORBIDDEN',
     });
 
+    expect(getTeamMock).not.toHaveBeenCalled();
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
+  test('returns a filtered team report', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const memberId =
+      '33333333-3333-4333-8333-333333333333';
+
+    getTeamMock.mockResolvedValue({
+      data: {
+        team: createTeam({
+          id: teamId,
+          members: [
+            {
+              id: memberId,
+              name: 'Team Member',
+              email: 'member@test.com',
+              role: 'team_member',
+              is_active: true,
+              member_role: 'member',
+            },
+          ],
+        }),
+      },
+    });
+
+    getTasksMock.mockResolvedValue({
+      data: [
+        createTask({
+          id: 'task-1',
+          team_id: teamId,
+          assigned_to: memberId,
+          status: 'completed',
+          priority: 'high',
+          due_date: '2026-08-10T00:00:00.000Z',
+          completed_at: '2026-08-09T00:00:00.000Z',
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        per_page: 100,
+        total: 1,
+        last_page: 1,
+      },
+    });
+
+    const response = await request(app)
+      .get(
+        `/api/v1/analytics/teams/${teamId}/report` +
+          '?date_from=2026-08-01' +
+          '&date_to=2026-08-31' +
+          '&date_field=due_date' +
+          `&member_ids=${memberId}` +
+          '&statuses=completed' +
+          '&priorities=high',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toMatchObject({
+      message: 'Team report retrieved successfully.',
+      data: {
+        team: {
+          id: teamId,
+          name: 'Engineering',
+        },
+        filters: {
+          date_from: '2026-08-01',
+          date_to: '2026-08-31',
+          date_field: 'due_date',
+          member_ids: [memberId],
+          statuses: ['completed'],
+          priorities: ['high'],
+        },
+        summary: {
+          total_tasks: 1,
+          completed_tasks: 1,
+        },
+        members: [
+          {
+            user_id: memberId,
+            summary: {
+              assigned_tasks: 1,
+              completed_tasks: 1,
+            },
+          },
+        ],
+      },
+      meta: {
+        cached: false,
+      },
+    });
+
+    expect(assertTeamAccessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'admin',
+      }),
+      teamId,
+      undefined,
+    );
+
+    expect(getTasksMock).toHaveBeenCalledWith({
+      team_id: teamId,
+      page: 1,
+      per_page: 100,
+    });
+  });
+
+  test('uses a separate cache entry for each report period', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    getTeamMock.mockResolvedValue({
+      data: {
+        team: createTeam({
+          id: teamId,
+          members: [],
+        }),
+      },
+    });
+
+    const firstResponse = await request(app)
+      .get(
+        `/api/v1/analytics/teams/${teamId}/report` +
+          '?date_from=2026-08-01&date_to=2026-08-15',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    const secondResponse = await request(app)
+      .get(
+        `/api/v1/analytics/teams/${teamId}/report` +
+          '?date_from=2026-08-16&date_to=2026-08-31',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+
+    expect(firstResponse.body.meta.cached).toBe(false);
+    expect(secondResponse.body.meta.cached).toBe(false);
+
+    expect(getTasksMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('rejects a report member outside the selected team', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    getTeamMock.mockResolvedValue({
+      data: {
+        team: createTeam({
+          id: teamId,
+          members: [],
+        }),
+      },
+    });
+
+    const response = await request(app)
+      .get(
+        `/api/v1/analytics/teams/${teamId}/report` +
+          '?member_ids=99999999-9999-4999-8999-999999999999',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(422);
+
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      errors: {
+        member_ids: expect.any(Array),
+      },
+    });
+  });
+
+  test('rejects team member access to team reports', async () => {
+    const token = createToken({
+      sub: '3',
+      role: 'team_member',
+    });
+
+    const response = await request(app)
+      .get(
+        '/api/v1/analytics/teams/' +
+          '11111111-1111-4111-8111-111111111111/report',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
     expect(getTeamMock).not.toHaveBeenCalled();
     expect(getTasksMock).not.toHaveBeenCalled();
   });

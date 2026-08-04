@@ -181,4 +181,78 @@ describe('XLSX export service', () => {
       }),
     ).rejects.toThrow(TypeError);
   });
+  test('creates multiple worksheets', async () => {
+    const buffer = await buildXLSX({
+      worksheets: [
+        {
+          worksheetName: 'Team Summary',
+          columns: [
+            {
+              header: 'Team',
+              key: 'team',
+            },
+          ],
+          rows: [
+            {
+              team: 'Engineering',
+            },
+          ],
+        },
+        {
+          worksheetName: 'Task Details',
+          columns,
+          rows: [
+            {
+              id: 1,
+              title: 'Prepare report',
+              status: 'completed',
+            },
+          ],
+        },
+      ],
+    });
+
+    const workbook = await loadWorkbook(buffer);
+
+    expect(workbook.worksheets.map((worksheet) => worksheet.name)).toEqual([
+      'Team Summary',
+      'Task Details',
+    ]);
+
+    expect(
+      workbook.getWorksheet('Team Summary').getCell('A2').value,
+    ).toBe('Engineering');
+
+    expect(
+      workbook.getWorksheet('Task Details').getCell('B2').value,
+    ).toBe('Prepare report');
+  });
+
+  test('rejects an empty worksheets array', async () => {
+    await expect(
+      buildXLSX({
+        worksheets: [],
+      }),
+    ).rejects.toThrow(TypeError);
+  });
+
+  test('validates every worksheet definition', async () => {
+    await expect(
+      buildXLSX({
+        worksheets: [
+          {
+            worksheetName: 'Valid',
+            columns,
+            rows: [],
+          },
+          {
+            worksheetName: '',
+            columns,
+            rows: [],
+          },
+        ],
+      }),
+    ).rejects.toThrow(TypeError);
+  });
+
 });

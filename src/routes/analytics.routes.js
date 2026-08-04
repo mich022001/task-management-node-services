@@ -2,7 +2,9 @@ import { Router } from 'express';
 
 import {
   getTaskSummary,
+  getTeamHighlights,
   getTeamProductivity,
+  getTeamReport,
   getUpcomingDeadlines,
 } from '../controllers/analytics.controller.js';
 import { authenticate } from '../middleware/authenticate.js';
@@ -19,9 +21,21 @@ router.get(
 );
 
 router.get(
+  '/teams/summary',
+  authorizeRoles('admin', 'manager'),
+  getTeamHighlights,
+);
+
+router.get(
   '/teams/:teamId/productivity',
   authorizeRoles('admin', 'manager'),
   getTeamProductivity,
+);
+
+router.get(
+  '/teams/:teamId/report',
+  authorizeRoles('admin', 'manager'),
+  getTeamReport,
 );
 
 router.get(

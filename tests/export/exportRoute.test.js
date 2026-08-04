@@ -2,7 +2,9 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 
 const getTasksMock = jest.fn();
+const getTeamMock = jest.fn();
 const getAuthorizedTeamIdsMock = jest.fn();
+const assertTeamAccessMock = jest.fn();
 const resolveAnalyticsTeamIdsMock = jest.fn();
 const buildCSVMock = jest.fn();
 const buildJSONMock = jest.fn();
@@ -15,12 +17,17 @@ jest.unstable_mockModule('../../src/clients/laravel/taskClient.js', () => ({
   getTask: jest.fn(),
 }));
 
+jest.unstable_mockModule('../../src/clients/laravel/teamClient.js', () => ({
+  getTeam: getTeamMock,
+  getTeams: jest.fn(),
+}));
+
 jest.unstable_mockModule(
   '../../src/services/analyticsAuthorization.service.js',
   () => ({
     getAuthorizedTeamIds: getAuthorizedTeamIdsMock,
     resolveAnalyticsTeamIds: resolveAnalyticsTeamIdsMock,
-    assertTeamAccess: jest.fn(),
+    assertTeamAccess: assertTeamAccessMock,
   }),
 );
 
@@ -59,7 +66,9 @@ function createTask(overrides = {}) {
 describe('Export routes', () => {
   beforeEach(() => {
     getTasksMock.mockReset();
+    getTeamMock.mockReset();
     getAuthorizedTeamIdsMock.mockReset();
+    assertTeamAccessMock.mockReset();
     resolveAnalyticsTeamIdsMock.mockReset();
     buildCSVMock.mockReset();
     buildJSONMock.mockReset();
@@ -70,6 +79,25 @@ describe('Export routes', () => {
     getAuthorizedTeamIdsMock.mockResolvedValue(undefined);
 
     resolveAnalyticsTeamIdsMock.mockReturnValue(undefined);
+
+    getTeamMock.mockResolvedValue({
+      data: {
+        team: {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Engineering',
+          members: [
+            {
+              id: '33333333-3333-4333-8333-333333333333',
+              name: 'Team Member',
+              email: 'member@test.com',
+              role: 'team_member',
+              is_active: true,
+              member_role: 'member',
+            },
+          ],
+        },
+      },
+    });
 
     getTasksMock.mockResolvedValue({
       data: [createTask()],
@@ -639,4 +667,238 @@ describe('Export routes', () => {
       }),
     );
   });
+  test('exports a team report as JSON', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const memberId =
+      '33333333-3333-4333-8333-333333333333';
+
+    getTasksMock.mockResolvedValue({
+      data: [
+        createTask({
+          id: 'task-1',
+          team_id: teamId,
+          assigned_to: memberId,
+          status: 'completed',
+          completed_at: '2026-08-03T00:00:00.000Z',
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
+
+    const response = await request(app)
+      .get(
+        '/api/v1/export/team-report/json' +
+          `?team_id=${teamId}` +
+          `&member_ids=${memberId}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.headers['content-disposition']).toMatch(
+      /^attachment; filename="team-report-.+\.json"$/,
+    );
+
+    expect(buildJSONMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Team report exported successfully.',
+        data: expect.objectContaining({
+          team: {
+            id: teamId,
+            name: 'Engineering',
+          },
+          members: [
+            expect.objectContaining({
+              user_id: memberId,
+            }),
+          ],
+        }),
+      }),
+    );
+
+    expect(assertTeamAccessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'admin',
+      }),
+      teamId,
+      undefined,
+    );
+
+    expect(getTasksMock).toHaveBeenCalledWith({
+      team_id: teamId,
+      page: 1,
+      per_page: 100,
+    });
+  });
+
+  test('exports a team report as CSV task rows', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const memberId =
+      '33333333-3333-4333-8333-333333333333';
+
+    getTasksMock.mockResolvedValue({
+      data: [
+        createTask({
+          id: 'task-1',
+          team_id: teamId,
+          assigned_to: memberId,
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
+
+    const response = await request(app)
+      .get(
+        '/api/v1/export/team-report/csv' +
+          `?team_id=${teamId}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(buildCSVMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rows: [
+          expect.objectContaining({
+            team_id: teamId,
+            member_id: memberId,
+            task_id: 'task-1',
+            task_title: 'Setup database',
+          }),
+        ],
+      }),
+    );
+  });
+
+  test('exports a three-sheet team report workbook', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const response = await request(app)
+      .get(
+        '/api/v1/export/team-report/xlsx' +
+          `?team_id=${teamId}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(buildXLSXMock).toHaveBeenCalledWith({
+      worksheets: [
+        expect.objectContaining({
+          worksheetName: 'Team Summary',
+        }),
+        expect.objectContaining({
+          worksheetName: 'Member Summary',
+        }),
+        expect.objectContaining({
+          worksheetName: 'Task Details',
+        }),
+      ],
+    });
+  });
+
+  test('rejects a team report without team_id', async () => {
+    const token = createToken({
+      role: 'admin',
+    });
+
+    const response = await request(app)
+      .get('/api/v1/export/team-report/csv')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(422);
+
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      errors: {
+        team_id: expect.any(Array),
+      },
+    });
+
+    expect(getTeamMock).not.toHaveBeenCalled();
+    expect(getTasksMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects a report member outside the team', async () => {
+    const token = createToken({
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const response = await request(app)
+      .get(
+        '/api/v1/export/team-report/json' +
+          `?team_id=${teamId}` +
+          '&member_ids=99999999-9999-4999-8999-999999999999',
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(422);
+
+    expect(response.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      errors: {
+        member_ids: expect.any(Array),
+      },
+    });
+  });
+
+  test('logs a successful team report export', async () => {
+    const token = createToken({
+      sub: '1',
+      role: 'admin',
+    });
+
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const response = await request(app)
+      .get(
+        '/api/v1/export/team-report/json' +
+          `?team_id=${teamId}`,
+      )
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(logExportSuccessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: 'team_report',
+        format: 'json',
+        filters: expect.objectContaining({
+          team_id: teamId,
+          date_field: 'due_date',
+        }),
+      }),
+    );
+  });
+
 });

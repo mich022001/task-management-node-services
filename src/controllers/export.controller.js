@@ -1,10 +1,13 @@
 import { getTasks } from '../clients/laravel/taskClient.js';
+import { getTeam } from '../clients/laravel/teamClient.js';
 import { AppError } from '../errors/AppError.js';
 import {
   buildTaskSummary,
+  buildTeamReport,
   buildUpcomingDeadlines,
 } from '../services/analytics.service.js';
 import {
+  assertTeamAccess,
   getAuthorizedTeamIds,
   resolveAnalyticsTeamIds,
 } from '../services/analyticsAuthorization.service.js';
@@ -19,6 +22,7 @@ import {
   exportFormatSchema,
   formatExportValidationErrors,
   taskExportQuerySchema,
+  teamReportExportQuerySchema,
 } from '../validation/export.schema.js';
 
 const taskColumns = Object.freeze([
@@ -180,6 +184,190 @@ const deadlineColumns = Object.freeze([
   },
 ]);
 
+const teamReportSummaryColumns = Object.freeze([
+  {
+    header: 'Team ID',
+    key: 'team_id',
+    width: 38,
+  },
+  {
+    header: 'Team Name',
+    key: 'team_name',
+    width: 30,
+  },
+  {
+    header: 'Total Tasks',
+    key: 'total_tasks',
+    width: 15,
+  },
+  {
+    header: 'Completed',
+    key: 'completed_tasks',
+    width: 15,
+  },
+  {
+    header: 'Unfinished',
+    key: 'unfinished_tasks',
+    width: 15,
+  },
+  {
+    header: 'Cancelled',
+    key: 'cancelled_tasks',
+    width: 15,
+  },
+  {
+    header: 'Overdue',
+    key: 'overdue_tasks',
+    width: 15,
+  },
+  {
+    header: 'Completion Rate',
+    key: 'completion_rate',
+    width: 18,
+  },
+  {
+    header: 'Average Completion Days',
+    key: 'average_completion_days',
+    width: 25,
+  },
+]);
+
+const teamReportMemberColumns = Object.freeze([
+  {
+    header: 'Member ID',
+    key: 'member_id',
+    width: 38,
+  },
+  {
+    header: 'Member Name',
+    key: 'member_name',
+    width: 30,
+  },
+  {
+    header: 'Email',
+    key: 'member_email',
+    width: 35,
+  },
+  {
+    header: 'Member Role',
+    key: 'member_role',
+    width: 18,
+  },
+  {
+    header: 'Assigned Tasks',
+    key: 'assigned_tasks',
+    width: 18,
+  },
+  {
+    header: 'Completed',
+    key: 'completed_tasks',
+    width: 15,
+  },
+  {
+    header: 'Unfinished',
+    key: 'unfinished_tasks',
+    width: 15,
+  },
+  {
+    header: 'Cancelled',
+    key: 'cancelled_tasks',
+    width: 15,
+  },
+  {
+    header: 'Overdue',
+    key: 'overdue_tasks',
+    width: 15,
+  },
+  {
+    header: 'Completion Rate',
+    key: 'completion_rate',
+    width: 18,
+  },
+  {
+    header: 'Average Completion Days',
+    key: 'average_completion_days',
+    width: 25,
+  },
+]);
+
+const teamReportTaskColumns = Object.freeze([
+  {
+    header: 'Team ID',
+    key: 'team_id',
+    width: 38,
+  },
+  {
+    header: 'Team Name',
+    key: 'team_name',
+    width: 30,
+  },
+  {
+    header: 'Member ID',
+    key: 'member_id',
+    width: 38,
+  },
+  {
+    header: 'Member Name',
+    key: 'member_name',
+    width: 30,
+  },
+  {
+    header: 'Member Email',
+    key: 'member_email',
+    width: 35,
+  },
+  {
+    header: 'Task ID',
+    key: 'task_id',
+    width: 38,
+  },
+  {
+    header: 'Task Title',
+    key: 'task_title',
+    width: 40,
+  },
+  {
+    header: 'Description',
+    key: 'description',
+    width: 50,
+  },
+  {
+    header: 'Status',
+    key: 'status',
+    width: 18,
+  },
+  {
+    header: 'Priority',
+    key: 'priority',
+    width: 15,
+  },
+  {
+    header: 'Created Date',
+    key: 'created_at',
+    width: 25,
+  },
+  {
+    header: 'Due Date',
+    key: 'due_date',
+    width: 25,
+  },
+  {
+    header: 'Completed Date',
+    key: 'completed_at',
+    width: 25,
+  },
+  {
+    header: 'Completion Days',
+    key: 'completion_days',
+    width: 18,
+  },
+  {
+    header: 'Overdue',
+    key: 'is_overdue',
+    width: 12,
+  },
+]);
+
 const exportContentTypes = Object.freeze({
   csv: 'text/csv; charset=utf-8',
   json: 'application/json; charset=utf-8',
@@ -277,6 +465,84 @@ function flattenDeadlines(deadlines) {
       category: 'upcoming',
       ...task,
     })),
+  ];
+}
+
+function flattenTeamReportSummary(report) {
+  return {
+    team_id: report.team.id,
+    team_name: report.team.name,
+    ...report.summary,
+  };
+}
+
+function flattenTeamReportMembers(report) {
+  return report.members.map((member) => ({
+    member_id: member.user_id,
+    member_name: member.name,
+    member_email: member.email,
+    member_role: member.member_role,
+    assigned_tasks: member.summary.assigned_tasks,
+    completed_tasks:
+      member.summary.completed_tasks,
+    unfinished_tasks:
+      member.summary.unfinished_tasks,
+    cancelled_tasks:
+      member.summary.cancelled_tasks,
+    overdue_tasks:
+      member.summary.overdue_tasks,
+    completion_rate:
+      member.summary.completion_rate,
+    average_completion_days:
+      member.summary.average_completion_days,
+  }));
+}
+
+function flattenTeamReportTasks(report) {
+  const memberRows = report.members.flatMap(
+    (member) =>
+      member.tasks.map((task) => ({
+        team_id: report.team.id,
+        team_name: report.team.name,
+        member_id: member.user_id,
+        member_name: member.name,
+        member_email: member.email,
+        task_id: task.id,
+        task_title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        created_at: task.created_at,
+        due_date: task.due_date,
+        completed_at: task.completed_at,
+        completion_days: task.completion_days,
+        is_overdue: task.is_overdue,
+      })),
+  );
+
+  const unassignedRows = report.unassigned_tasks.map(
+    (task) => ({
+      team_id: report.team.id,
+      team_name: report.team.name,
+      member_id: null,
+      member_name: 'Unassigned',
+      member_email: null,
+      task_id: task.id,
+      task_title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      created_at: task.created_at,
+      due_date: task.due_date,
+      completed_at: task.completed_at,
+      completion_days: task.completion_days,
+      is_overdue: task.is_overdue,
+    }),
+  );
+
+  return [
+    ...memberRows,
+    ...unassignedRows,
   ];
 }
 
@@ -541,6 +807,176 @@ export async function exportUpcomingDeadlines(req, res, next) {
     logExportSuccess({
       ...auditContext,
       recordCount: rows.length,
+    });
+
+    return res.status(200).send(buffer);
+  } catch (error) {
+    recordExportFailure(auditContext, error);
+
+    return next(error);
+  }
+}
+
+export async function exportTeamReport(req, res, next) {
+  let auditContext = createAuditContext({
+    user: req.user,
+    resource: 'team_report',
+    format: req.params.format ?? 'unknown',
+  });
+
+  try {
+    const params = validateRequest(
+      exportFormatSchema,
+      req.params,
+    );
+
+    const query = validateRequest(
+      teamReportExportQuerySchema,
+      req.query,
+    );
+
+    const authorizedTeamIds =
+      await getAuthorizedTeamIds(req.user);
+
+    assertTeamAccess(
+      req.user,
+      query.team_id,
+      authorizedTeamIds,
+    );
+
+    auditContext = createAuditContext({
+      user: req.user,
+      resource: 'team_report',
+      format: params.format,
+      filters: {
+        team_id: query.team_id,
+        date_from: query.date_from ?? null,
+        date_to: query.date_to ?? null,
+        date_field: query.date_field,
+        member_ids: query.member_ids,
+        statuses: query.statuses,
+        priorities: query.priorities,
+      },
+    });
+
+    const [teamResponse, tasks] = await Promise.all([
+      getTeam(query.team_id),
+      getAllTasks({
+        team_id: query.team_id,
+      }),
+    ]);
+
+    const team = teamResponse.data?.team;
+
+    if (!team) {
+      throw new AppError(
+        'Laravel returned an invalid team response.',
+        {
+          statusCode: 502,
+          code: 'INVALID_LARAVEL_RESPONSE',
+        },
+      );
+    }
+
+    const teamMemberIds = new Set(
+      (team.members ?? []).map((member) =>
+        String(member.id),
+      ),
+    );
+
+    const invalidMemberIds =
+      query.member_ids.filter(
+        (memberId) =>
+          !teamMemberIds.has(String(memberId)),
+      );
+
+    if (invalidMemberIds.length > 0) {
+      throw new AppError(
+        'One or more selected members do not belong to this team.',
+        {
+          statusCode: 422,
+          code: 'VALIDATION_FAILED',
+          errors: {
+            member_ids: [
+              'Every selected member must belong to the requested team.',
+            ],
+          },
+        },
+      );
+    }
+
+    const report = buildTeamReport(team, tasks, {
+      dateField: query.date_field,
+      dateFrom: query.date_from,
+      dateTo: query.date_to,
+      memberIds: query.member_ids,
+      statuses: query.statuses,
+      priorities: query.priorities,
+    });
+
+    const summaryRows = [
+      flattenTeamReportSummary(report),
+    ];
+
+    const memberRows =
+      flattenTeamReportMembers(report);
+
+    const taskRows =
+      flattenTeamReportTasks(report);
+
+    const filename = buildFilename(
+      'team-report',
+      params.format,
+    );
+
+    auditContext.filename = filename;
+
+    let buffer;
+
+    if (params.format === 'json') {
+      buffer = buildJSON({
+        message: 'Team report exported successfully.',
+        data: report,
+        meta: {
+          record_count: taskRows.length,
+        },
+      });
+    } else if (params.format === 'csv') {
+      buffer = buildCSV({
+        columns: teamReportTaskColumns,
+        rows: taskRows,
+      });
+    } else {
+      buffer = await buildXLSX({
+        worksheets: [
+          {
+            worksheetName: 'Team Summary',
+            columns: teamReportSummaryColumns,
+            rows: summaryRows,
+          },
+          {
+            worksheetName: 'Member Summary',
+            columns: teamReportMemberColumns,
+            rows: memberRows,
+          },
+          {
+            worksheetName: 'Task Details',
+            columns: teamReportTaskColumns,
+            rows: taskRows,
+          },
+        ],
+      });
+    }
+
+    setDownloadHeaders(res, {
+      format: params.format,
+      filename,
+      contentLength: buffer.length,
+    });
+
+    logExportSuccess({
+      ...auditContext,
+      recordCount: taskRows.length,
     });
 
     return res.status(200).send(buffer);

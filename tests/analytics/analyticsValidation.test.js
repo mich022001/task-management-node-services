@@ -2,6 +2,8 @@ import {
   formatValidationErrors,
   taskSummaryQuerySchema,
   teamProductivityParamsSchema,
+  teamReportParamsSchema,
+  teamReportQuerySchema,
   upcomingDeadlinesQuerySchema,
 } from '../../src/validation/analytics.schema.js';
 
@@ -168,6 +170,122 @@ describe('Analytics request validation', () => {
       const result = upcomingDeadlinesQuerySchema.safeParse({
         days: '7',
         team_id: 'invalid',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('team report parameters', () => {
+    test('accepts a valid team UUID', () => {
+      const result = teamReportParamsSchema.safeParse({
+        teamId: '11111111-1111-4111-8111-111111111111',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    test('rejects an invalid team UUID', () => {
+      const result = teamReportParamsSchema.safeParse({
+        teamId: 'invalid',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('team report query', () => {
+    test('applies the default due-date field', () => {
+      const result = teamReportQuerySchema.safeParse({});
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        date_field: 'due_date',
+        member_ids: [],
+        statuses: [],
+        priorities: [],
+      });
+    });
+
+    test('accepts a complete report filter set', () => {
+      const result = teamReportQuerySchema.safeParse({
+        date_from: '2026-08-01',
+        date_to: '2026-08-31',
+        date_field: 'completed_at',
+        member_ids:
+          '22222222-2222-4222-8222-222222222222,' +
+          '33333333-3333-4333-8333-333333333333',
+        statuses: 'completed,in_progress',
+        priorities: 'high,medium',
+      });
+
+      expect(result.success).toBe(true);
+
+      expect(result.data).toEqual({
+        date_from: '2026-08-01',
+        date_to: '2026-08-31',
+        date_field: 'completed_at',
+        member_ids: [
+          '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333',
+        ],
+        statuses: ['completed', 'in_progress'],
+        priorities: ['high', 'medium'],
+      });
+    });
+
+    test('accepts repeated query values', () => {
+      const result = teamReportQuerySchema.safeParse({
+        statuses: ['pending', 'completed'],
+        priorities: ['low', 'high'],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.statuses).toEqual([
+        'pending',
+        'completed',
+      ]);
+      expect(result.data.priorities).toEqual([
+        'low',
+        'high',
+      ]);
+    });
+
+    test('rejects an invalid calendar date', () => {
+      const result = teamReportQuerySchema.safeParse({
+        date_from: '2026-02-30',
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    test('rejects a reversed date range', () => {
+      const result = teamReportQuerySchema.safeParse({
+        date_from: '2026-08-31',
+        date_to: '2026-08-01',
+      });
+
+      expect(result.success).toBe(false);
+
+      expect(
+        result.error.issues.some(
+          (issue) => issue.path.join('.') === 'date_to',
+        ),
+      ).toBe(true);
+    });
+
+    test('rejects an invalid member UUID', () => {
+      const result = teamReportQuerySchema.safeParse({
+        member_ids: 'invalid',
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    test('rejects unsupported status and priority filters', () => {
+      const result = teamReportQuerySchema.safeParse({
+        statuses: 'archived',
+        priorities: 'urgent',
       });
 
       expect(result.success).toBe(false);

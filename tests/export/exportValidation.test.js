@@ -4,6 +4,7 @@ import {
   exportFormatSchema,
   formatExportValidationErrors,
   taskExportQuerySchema,
+  teamReportExportQuerySchema,
 } from '../../src/validation/export.schema.js';
 
 describe('Export request validation', () => {
@@ -129,6 +130,99 @@ describe('Export request validation', () => {
       const result = deadlineExportQuerySchema.safeParse({
         team_id: 'invalid',
       });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('team report export query', () => {
+    const teamId =
+      '11111111-1111-4111-8111-111111111111';
+
+    const memberId =
+      '22222222-2222-4222-8222-222222222222';
+
+    test('requires a team ID', () => {
+      const result =
+        teamReportExportQuerySchema.safeParse({});
+
+      expect(result.success).toBe(false);
+    });
+
+    test('accepts a full report export query', () => {
+      const result =
+        teamReportExportQuerySchema.safeParse({
+          team_id: teamId,
+          date_from: '2026-08-01',
+          date_to: '2026-08-31',
+          date_field: 'due_date',
+          member_ids: memberId,
+          statuses: 'completed,in_progress',
+          priorities: 'high,medium',
+        });
+
+      expect(result.success).toBe(true);
+
+      expect(result.data).toEqual({
+        team_id: teamId,
+        date_from: '2026-08-01',
+        date_to: '2026-08-31',
+        date_field: 'due_date',
+        member_ids: [memberId],
+        statuses: [
+          'completed',
+          'in_progress',
+        ],
+        priorities: [
+          'high',
+          'medium',
+        ],
+      });
+    });
+
+    test('applies report defaults', () => {
+      const result =
+        teamReportExportQuerySchema.safeParse({
+          team_id: teamId,
+        });
+
+      expect(result.success).toBe(true);
+
+      expect(result.data).toEqual({
+        team_id: teamId,
+        date_field: 'due_date',
+        member_ids: [],
+        statuses: [],
+        priorities: [],
+      });
+    });
+
+    test('rejects a reversed report period', () => {
+      const result =
+        teamReportExportQuerySchema.safeParse({
+          team_id: teamId,
+          date_from: '2026-08-31',
+          date_to: '2026-08-01',
+        });
+
+      expect(result.success).toBe(false);
+
+      expect(
+        result.error.issues.some(
+          (issue) =>
+            issue.path.join('.') === 'date_to',
+        ),
+      ).toBe(true);
+    });
+
+    test('rejects invalid report filters', () => {
+      const result =
+        teamReportExportQuerySchema.safeParse({
+          team_id: teamId,
+          member_ids: 'invalid',
+          statuses: 'archived',
+          priorities: 'urgent',
+        });
 
       expect(result.success).toBe(false);
     });

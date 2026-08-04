@@ -105,30 +105,42 @@ export function buildJSON(data) {
   return Buffer.from(`${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
-export async function buildXLSX({ worksheetName = 'Export', columns, rows }) {
+function addWorksheet(
+  workbook,
+  {
+    worksheetName,
+    columns,
+    rows,
+  },
+) {
   assertColumns(columns);
   assertRows(rows);
 
-  if (typeof worksheetName !== 'string' || worksheetName.trim() === '') {
-    throw new TypeError('Worksheet name must be a non-empty string.');
+  if (
+    typeof worksheetName !== 'string' ||
+    worksheetName.trim() === ''
+  ) {
+    throw new TypeError(
+      'Worksheet name must be a non-empty string.',
+    );
   }
 
-  const workbook = new ExcelJS.Workbook();
-
-  workbook.creator = 'Task Management Node.js Services';
-  workbook.created = new Date();
-
-  const worksheet = workbook.addWorksheet(worksheetName.slice(0, 31));
+  const worksheet = workbook.addWorksheet(
+    worksheetName.slice(0, 31),
+  );
 
   worksheet.columns = columns.map((column) => ({
     header: column.header,
     key: column.key,
-    width: column.width ?? Math.max(column.header.length + 2, 12),
+    width:
+      column.width ??
+      Math.max(column.header.length + 2, 12),
   }));
 
   const normalizedRows = normalizeRows(columns, rows);
 
   worksheet.addRows(normalizedRows);
+
   worksheet.views = [
     {
       state: 'frozen',
@@ -146,6 +158,41 @@ export async function buildXLSX({ worksheetName = 'Export', columns, rows }) {
       column: columns.length,
     },
   };
+
+  return worksheet;
+}
+
+export async function buildXLSX({
+  worksheetName = 'Export',
+  columns,
+  rows,
+  worksheets,
+}) {
+  const workbook = new ExcelJS.Workbook();
+
+  workbook.creator = 'Task Management Node.js Services';
+  workbook.created = new Date();
+
+  if (worksheets !== undefined) {
+    if (
+      !Array.isArray(worksheets) ||
+      worksheets.length === 0
+    ) {
+      throw new TypeError(
+        'XLSX worksheets must be a non-empty array.',
+      );
+    }
+
+    for (const worksheetDefinition of worksheets) {
+      addWorksheet(workbook, worksheetDefinition);
+    }
+  } else {
+    addWorksheet(workbook, {
+      worksheetName,
+      columns,
+      rows,
+    });
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
 
