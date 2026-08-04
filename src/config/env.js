@@ -62,6 +62,10 @@ const environmentSchema = z.object({
 
   SMTP_FROM_EMAIL: z.email().default('no-reply@example.com'),
 
+  SMTP_RETRY_ATTEMPTS: z.coerce.number().int().min(0).max(10).default(2),
+
+  SMTP_RETRY_DELAY: z.coerce.number().int().min(0).default(300),
+
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 

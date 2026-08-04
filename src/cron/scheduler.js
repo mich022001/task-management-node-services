@@ -4,7 +4,7 @@ import { logger } from '../config/logger.js';
 
 export const CRON_SCHEDULES = Object.freeze({
   dailyDigest: '0 8 * * *',
-  deadlineReminder: '0 * * * *',
+  deadlineReminder: '0 */2 * * *',
   cleanup: '0 0 * * *',
 });
 

@@ -14,3 +14,10 @@ export function getTask(taskId) {
     url: `/tasks/${taskId}`,
   });
 }
+
+export function archiveTask(taskId) {
+  return laravelRequest({
+    method: 'DELETE',
+    url: `/tasks/${taskId}/archive`,
+  });
+}

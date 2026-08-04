@@ -85,4 +85,93 @@ describe('Mail service', () => {
       message: 'Unable to deliver notification email.',
     });
   });
+
+  test('retries a temporary SMTP failure and succeeds', async () => {
+    const temporaryError = Object.assign(new Error('Temporary SMTP failure'), {
+      code: 'ETIMEDOUT',
+    });
+
+    sendMailMock.mockRejectedValueOnce(temporaryError).mockResolvedValueOnce({
+      messageId: 'message-after-retry',
+      accepted: ['member@test.com'],
+    });
+
+    const result = await sendMail({
+      to: 'member@test.com',
+      subject: 'Retry test',
+      text: 'Retry test',
+      html: '<p>Retry test</p>',
+    });
+
+    expect(sendMailMock).toHaveBeenCalledTimes(2);
+    expect(result.messageId).toBe('message-after-retry');
+  });
+
+  test('retries a temporary SMTP response code', async () => {
+    const temporaryError = Object.assign(
+      new Error('Mailbox temporarily unavailable'),
+      {
+        responseCode: 451,
+      },
+    );
+
+    sendMailMock.mockRejectedValueOnce(temporaryError).mockResolvedValueOnce({
+      messageId: 'message-after-451',
+    });
+
+    const result = await sendMail({
+      to: 'member@test.com',
+      subject: 'Temporary response',
+      text: 'Temporary response',
+      html: '<p>Temporary response</p>',
+    });
+
+    expect(sendMailMock).toHaveBeenCalledTimes(2);
+    expect(result.messageId).toBe('message-after-451');
+  });
+
+  test('does not retry a permanent SMTP failure', async () => {
+    const permanentError = Object.assign(new Error('Authentication failed'), {
+      code: 'EAUTH',
+      responseCode: 535,
+    });
+
+    sendMailMock.mockRejectedValue(permanentError);
+
+    await expect(
+      sendMail({
+        to: 'member@test.com',
+        subject: 'Permanent failure',
+        text: 'Permanent failure',
+        html: '<p>Permanent failure</p>',
+      }),
+    ).rejects.toMatchObject({
+      name: 'MailDeliveryError',
+      code: 'MAIL_DELIVERY_FAILED',
+    });
+
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('throws after exhausting temporary failure retries', async () => {
+    const temporaryError = Object.assign(new Error('SMTP connection reset'), {
+      code: 'ECONNRESET',
+    });
+
+    sendMailMock.mockRejectedValue(temporaryError);
+
+    await expect(
+      sendMail({
+        to: 'member@test.com',
+        subject: 'Retry exhaustion',
+        text: 'Retry exhaustion',
+        html: '<p>Retry exhaustion</p>',
+      }),
+    ).rejects.toMatchObject({
+      name: 'MailDeliveryError',
+      code: 'MAIL_DELIVERY_FAILED',
+    });
+
+    expect(sendMailMock).toHaveBeenCalledTimes(3);
+  });
 });

@@ -35,6 +35,8 @@ function runEnvImport(overrides = {}) {
         SMTP_PASS: 'test-password',
         SMTP_FROM_NAME: 'Task Management Platform',
         SMTP_FROM_EMAIL: 'no-reply@example.com',
+        SMTP_RETRY_ATTEMPTS: '2',
+        SMTP_RETRY_DELAY: '0',
 
         ...overrides,
       },
@@ -233,6 +235,42 @@ describe('Environment validation', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('SMTP_PASS');
+  });
+
+  test('fails when SMTP_RETRY_ATTEMPTS is negative', () => {
+    const result = runEnvImport({
+      SMTP_RETRY_ATTEMPTS: '-1',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_RETRY_ATTEMPTS');
+  });
+
+  test('fails when SMTP_RETRY_ATTEMPTS exceeds maximum', () => {
+    const result = runEnvImport({
+      SMTP_RETRY_ATTEMPTS: '11',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_RETRY_ATTEMPTS');
+  });
+
+  test('fails when SMTP_RETRY_DELAY is negative', () => {
+    const result = runEnvImport({
+      SMTP_RETRY_DELAY: '-1',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_RETRY_DELAY');
+  });
+
+  test('fails when SMTP_RETRY_DELAY is not numeric', () => {
+    const result = runEnvImport({
+      SMTP_RETRY_DELAY: 'invalid',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMTP_RETRY_DELAY');
   });
 
   test('fails when SMTP_FROM_EMAIL is invalid', () => {

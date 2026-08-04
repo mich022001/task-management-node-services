@@ -43,7 +43,7 @@ describe('Cron job registration', () => {
     expect(CRON_SCHEDULES.dailyDigest).toBe('0 8 * * *');
   });
 
-  test('registers deadline reminder with the hourly schedule', () => {
+  test('registers deadline reminder with the every-two-hours schedule', () => {
     const scheduler = createScheduler();
 
     registerCronJobs({
@@ -57,7 +57,7 @@ describe('Cron job registration', () => {
       handler: expect.any(Function),
     });
 
-    expect(CRON_SCHEDULES.deadlineReminder).toBe('0 * * * *');
+    expect(CRON_SCHEDULES.deadlineReminder).toBe('0 */2 * * *');
   });
 
   test('registers cleanup with the midnight schedule', () => {
@@ -93,7 +93,7 @@ describe('Cron job registration', () => {
       },
       {
         name: 'deadline_reminder',
-        schedule: '0 * * * *',
+        schedule: '0 */2 * * *',
         running: false,
       },
       {

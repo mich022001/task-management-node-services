@@ -3,7 +3,11 @@ import AxiosMockAdapter from 'axios-mock-adapter';
 import { checkLaravelHealth } from '../src/clients/laravel/healthClient.js';
 import { getUser, getUsers } from '../src/clients/laravel/userClient.js';
 import { getTeam, getTeams } from '../src/clients/laravel/teamClient.js';
-import { getTask, getTasks } from '../src/clients/laravel/taskClient.js';
+import {
+  archiveTask,
+  getTask,
+  getTasks,
+} from '../src/clients/laravel/taskClient.js';
 import { laravelAxios } from '../src/clients/laravel/laravelClient.js';
 
 describe('Laravel internal API modules', () => {
@@ -151,5 +155,18 @@ describe('Laravel internal API modules', () => {
     const response = await getTask(5);
 
     expect(response.data.task.id).toBe(5);
+  });
+
+  test('task client archives a task through the internal endpoint', async () => {
+    mock.onDelete('/tasks/task-uuid/archive').reply(200, {
+      message: 'Cancelled task archived successfully.',
+      data: {
+        task_id: 'task-uuid',
+      },
+    });
+
+    const response = await archiveTask('task-uuid');
+
+    expect(response.data.task_id).toBe('task-uuid');
   });
 });

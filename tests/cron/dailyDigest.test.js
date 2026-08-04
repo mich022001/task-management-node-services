@@ -10,6 +10,7 @@ function createTask(overrides = {}) {
     status: 'pending',
     priority: 'medium',
     due_date: null,
+    assigned_to: null,
     ...overrides,
   };
 }
@@ -17,6 +18,8 @@ function createTask(overrides = {}) {
 function createLogger() {
   return {
     info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
   };
 }
 
@@ -49,7 +52,7 @@ describe('Daily digest job', () => {
       now,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       generated_at: '2026-08-03T00:00:00.000Z',
       total_tasks: 2,
       pending_tasks: 1,
@@ -257,5 +260,296 @@ describe('Daily digest job', () => {
         loggerInstance: createLogger(),
       }),
     ).rejects.toBe(error);
+  });
+
+  test('groups incomplete tasks and queues one digest per assigned user', async () => {
+    const getTasksFn = jest.fn().mockResolvedValue({
+      data: [
+        createTask({
+          id: 1,
+          title: 'Write API documentation',
+          status: 'pending',
+          assigned_to: 10,
+        }),
+        createTask({
+          id: 2,
+          title: 'Review integration tests',
+          status: 'in_progress',
+          assigned_to: 10,
+        }),
+        createTask({
+          id: 3,
+          title: 'Deploy release',
+          status: 'pending',
+          assigned_to: 20,
+        }),
+        createTask({
+          id: 4,
+          status: 'completed',
+          assigned_to: 10,
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
+
+    const getUserFn = jest.fn(async (userId) => ({
+      data: {
+        id: userId,
+        name: userId === 10 ? 'Michael Developer' : 'Jane Manager',
+        email: userId === 10 ? 'michael@example.com' : 'jane@example.com',
+      },
+    }));
+
+    const enqueueNotificationFn = jest.fn();
+    const processQueueFn = jest.fn().mockResolvedValue(undefined);
+
+    const result = await runDailyDigest({
+      getTasksFn,
+      getUserFn,
+      enqueueNotificationFn,
+      processQueueFn,
+      loggerInstance: createLogger(),
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(getUserFn).toHaveBeenCalledTimes(2);
+    expect(getUserFn).toHaveBeenCalledWith(10);
+    expect(getUserFn).toHaveBeenCalledWith(20);
+
+    expect(enqueueNotificationFn).toHaveBeenCalledTimes(2);
+
+    expect(enqueueNotificationFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'custom',
+        recipient_email: 'michael@example.com',
+        subject: 'Daily task digest — 2 incomplete tasks',
+        message: expect.stringContaining('Write API documentation'),
+      }),
+    );
+
+    expect(enqueueNotificationFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient_email: 'jane@example.com',
+        subject: 'Daily task digest — 1 incomplete task',
+        message: expect.stringContaining('Deploy release'),
+      }),
+    );
+
+    expect(processQueueFn).toHaveBeenCalledTimes(1);
+
+    expect(result).toMatchObject({
+      incomplete_tasks: 3,
+      users_with_incomplete_tasks: 2,
+      queued_digests: 2,
+      skipped_unassigned_tasks: 0,
+      skipped_without_email: 0,
+      failed_digests: 0,
+    });
+  });
+
+  test('does not include completed or cancelled tasks in digest emails', async () => {
+    const getTasksFn = jest.fn().mockResolvedValue({
+      data: [
+        createTask({
+          id: 1,
+          title: 'Pending task',
+          status: 'pending',
+          assigned_to: 10,
+        }),
+        createTask({
+          id: 2,
+          title: 'Completed task',
+          status: 'completed',
+          assigned_to: 10,
+        }),
+        createTask({
+          id: 3,
+          title: 'Cancelled task',
+          status: 'cancelled',
+          assigned_to: 10,
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+      },
+    });
+
+    const enqueueNotificationFn = jest.fn();
+
+    await runDailyDigest({
+      getTasksFn,
+      getUserFn: jest.fn().mockResolvedValue({
+        data: {
+          id: 10,
+          name: 'Michael',
+          email: 'michael@example.com',
+        },
+      }),
+      enqueueNotificationFn,
+      processQueueFn: jest.fn(),
+      loggerInstance: createLogger(),
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    const notification = enqueueNotificationFn.mock.calls[0][0];
+
+    expect(notification.message).toContain('Pending task');
+    expect(notification.message).not.toContain('Completed task');
+    expect(notification.message).not.toContain('Cancelled task');
+  });
+
+  test('skips unassigned incomplete tasks', async () => {
+    const getUserFn = jest.fn();
+    const enqueueNotificationFn = jest.fn();
+    const processQueueFn = jest.fn();
+
+    const result = await runDailyDigest({
+      getTasksFn: jest.fn().mockResolvedValue({
+        data: [
+          createTask({
+            id: 1,
+            status: 'pending',
+            assigned_to: null,
+          }),
+        ],
+        meta: {
+          current_page: 1,
+          last_page: 1,
+        },
+      }),
+      getUserFn,
+      enqueueNotificationFn,
+      processQueueFn,
+      loggerInstance: createLogger(),
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(getUserFn).not.toHaveBeenCalled();
+    expect(enqueueNotificationFn).not.toHaveBeenCalled();
+    expect(processQueueFn).not.toHaveBeenCalled();
+
+    expect(result).toMatchObject({
+      incomplete_tasks: 1,
+      queued_digests: 0,
+      skipped_unassigned_tasks: 1,
+    });
+  });
+
+  test('skips an assigned user without an email address', async () => {
+    const loggerInstance = createLogger();
+    const enqueueNotificationFn = jest.fn();
+    const processQueueFn = jest.fn();
+
+    const result = await runDailyDigest({
+      getTasksFn: jest.fn().mockResolvedValue({
+        data: [
+          createTask({
+            id: 1,
+            assigned_to: 10,
+          }),
+        ],
+        meta: {
+          current_page: 1,
+          last_page: 1,
+        },
+      }),
+      getUserFn: jest.fn().mockResolvedValue({
+        data: {
+          id: 10,
+          name: 'No Email User',
+          email: null,
+        },
+      }),
+      enqueueNotificationFn,
+      processQueueFn,
+      loggerInstance,
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(enqueueNotificationFn).not.toHaveBeenCalled();
+    expect(processQueueFn).not.toHaveBeenCalled();
+    expect(result.skipped_without_email).toBe(1);
+
+    expect(loggerInstance.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assigneeId: 10,
+        reason: 'missing_email',
+      }),
+      'Daily digest skipped.',
+    );
+  });
+
+  test('continues when one user lookup fails', async () => {
+    const enqueueNotificationFn = jest.fn();
+    const processQueueFn = jest.fn().mockResolvedValue(undefined);
+
+    const getUserFn = jest.fn(async (userId) => {
+      if (userId === 10) {
+        throw new Error('User service unavailable.');
+      }
+
+      return {
+        data: {
+          id: userId,
+          name: 'Available User',
+          email: 'available@example.com',
+        },
+      };
+    });
+
+    const result = await runDailyDigest({
+      getTasksFn: jest.fn().mockResolvedValue({
+        data: [
+          createTask({
+            id: 1,
+            assigned_to: 10,
+          }),
+          createTask({
+            id: 2,
+            assigned_to: 20,
+          }),
+        ],
+        meta: {
+          current_page: 1,
+          last_page: 1,
+        },
+      }),
+      getUserFn,
+      enqueueNotificationFn,
+      processQueueFn,
+      loggerInstance: createLogger(),
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(enqueueNotificationFn).toHaveBeenCalledTimes(1);
+    expect(processQueueFn).toHaveBeenCalledTimes(1);
+
+    expect(result).toMatchObject({
+      queued_digests: 1,
+      failed_digests: 1,
+    });
+  });
+
+  test('does not process the queue when no digest is queued', async () => {
+    const processQueueFn = jest.fn();
+
+    await runDailyDigest({
+      getTasksFn: jest.fn().mockResolvedValue({
+        data: [],
+        meta: {
+          current_page: 1,
+          last_page: 1,
+        },
+      }),
+      processQueueFn,
+      loggerInstance: createLogger(),
+      now: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(processQueueFn).not.toHaveBeenCalled();
   });
 });
