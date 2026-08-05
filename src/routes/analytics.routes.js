@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import {
+  getDashboardAnalytics,
   getTaskSummary,
   getTeamHighlights,
   getTeamProductivity,
@@ -13,6 +14,12 @@ import { authorizeRoles } from '../middleware/authorizeRoles.js';
 const router = Router();
 
 router.use(authenticate);
+
+router.get(
+  '/dashboard',
+  authorizeRoles('admin', 'manager', 'team_member'),
+  getDashboardAnalytics,
+);
 
 router.get(
   '/tasks/summary',

@@ -157,6 +157,115 @@ describe('Analytics routes', () => {
     expect(getTasksMock).not.toHaveBeenCalled();
   });
 
+  test('returns unified dashboard analytics for a manager', async () => {
+    const token = createToken({
+      sub: '2',
+      role: 'manager',
+    });
+
+    getTeamsMock.mockResolvedValue({
+      data: [
+        createTeam({
+          id: '11111111-1111-4111-8111-111111111111',
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        per_page: 100,
+        total: 1,
+        last_page: 1,
+      },
+    });
+
+    getTasksMock.mockResolvedValue({
+      data: [
+        createTask({
+          id: 'task-1',
+          team_id: '11111111-1111-4111-8111-111111111111',
+          status: 'completed',
+          completed_at: '2026-08-02T12:00:00.000Z',
+        }),
+        createTask({
+          id: 'task-2',
+          team_id: '11111111-1111-4111-8111-111111111111',
+          status: 'pending',
+          due_date: '2099-08-05T12:00:00.000Z',
+        }),
+      ],
+      meta: {
+        current_page: 1,
+        per_page: 100,
+        total: 2,
+        last_page: 1,
+      },
+    });
+
+    const response = await request(app)
+      .get('/api/v1/analytics/dashboard?days=7')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toMatchObject({
+      message: 'Dashboard analytics retrieved successfully.',
+      data: {
+        summary: {
+          total_tasks: 2,
+          completed_tasks: 1,
+          completion_rate: 50,
+        },
+        deadlines: {
+          range_days: 7,
+        },
+        team_highlights: {
+          teams: [
+            expect.objectContaining({
+              team_name: 'Engineering',
+              total_tasks: 2,
+            }),
+          ],
+        },
+      },
+      meta: {
+        cached: false,
+      },
+    });
+
+    expect(getTeamsMock).toHaveBeenCalledTimes(1);
+    expect(getTeamsMock).toHaveBeenCalledWith({
+      user_id: '2',
+      page: 1,
+      per_page: 100,
+    });
+
+    expect(getTasksMock).toHaveBeenCalledTimes(1);
+
+    expect(getAuthorizedTeamIdsMock).not.toHaveBeenCalled();
+  });
+
+  test('returns a personal unified dashboard for a team member', async () => {
+    const token = createToken({
+      sub: '3',
+      role: 'team_member',
+    });
+
+    const response = await request(app)
+      .get('/api/v1/analytics/dashboard')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+
+    expect(getTasksMock).toHaveBeenCalledWith({
+      assigned_to: '3',
+      page: 1,
+      per_page: 100,
+    });
+
+    expect(getTeamsMock).not.toHaveBeenCalled();
+
+    expect(response.body.data.team_highlights.teams).toEqual([]);
+  });
+
   test('returns task summary for a team member', async () => {
     const token = createToken({
       sub: '3',
@@ -367,8 +476,7 @@ describe('Analytics routes', () => {
     expect(response.status).toBe(200);
 
     expect(response.body).toMatchObject({
-      message:
-        'Team highlights retrieved successfully.',
+      message: 'Team highlights retrieved successfully.',
       data: {
         teams: [
           expect.objectContaining({
@@ -578,11 +686,9 @@ describe('Analytics routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
-    const memberId =
-      '33333333-3333-4333-8333-333333333333';
+    const memberId = '33333333-3333-4333-8333-333333333333';
 
     getTeamMock.mockResolvedValue({
       data: {
@@ -691,8 +797,7 @@ describe('Analytics routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     getTeamMock.mockResolvedValue({
       data: {
@@ -732,8 +837,7 @@ describe('Analytics routes', () => {
       role: 'admin',
     });
 
-    const teamId =
-      '11111111-1111-4111-8111-111111111111';
+    const teamId = '11111111-1111-4111-8111-111111111111';
 
     getTeamMock.mockResolvedValue({
       data: {

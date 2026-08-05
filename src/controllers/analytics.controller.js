@@ -3,10 +3,7 @@ import {
   setCachedAnalytics,
 } from '../cache/analytics.cache.js';
 import { getTask, getTasks } from '../clients/laravel/taskClient.js';
-import {
-  getTeam,
-  getTeams,
-} from '../clients/laravel/teamClient.js';
+import { getTeam, getTeams } from '../clients/laravel/teamClient.js';
 import { logger } from '../config/logger.js';
 import { AppError } from '../errors/AppError.js';
 import {
@@ -65,8 +62,7 @@ async function getAllTeams(params = {}) {
 
     teams.push(...(response.data ?? []));
 
-    lastPage =
-      response.meta?.last_page ?? currentPage;
+    lastPage = response.meta?.last_page ?? currentPage;
 
     currentPage += 1;
   } while (currentPage <= lastPage);
@@ -147,6 +143,140 @@ function storeInCache(cacheKey, value, requestContext) {
   return value;
 }
 
+export async function getDashboardAnalytics(req, res, next) {
+  try {
+    const query = validateRequest(upcomingDeadlinesQuerySchema, req.query);
+
+    const requestContext = {
+      analyticsType: 'dashboard',
+      userId: req.user.id,
+      role: req.user.role,
+      days: query.days,
+      requestedTeamId: query.team_id,
+    };
+
+    const cacheKey = [
+      'analytics',
+      'dashboard',
+      `user:${req.user.id}`,
+      `role:${req.user.role}`,
+      `team:${query.team_id ?? 'all'}`,
+      `days:${query.days}`,
+    ].join(':');
+
+    const cachedResult = getFromCache(cacheKey, requestContext);
+
+    if (cachedResult !== undefined) {
+      return res.status(200).json({
+        message: 'Dashboard analytics retrieved successfully.',
+        data: cachedResult,
+        meta: {
+          cached: true,
+        },
+      });
+    }
+
+    let teams = [];
+    let tasks = [];
+    let teamIds;
+
+    if (req.user.role === 'team_member') {
+      if (query.team_id !== undefined) {
+        throw new AppError(
+          'Team Members cannot request team-scoped analytics.',
+          {
+            statusCode: 403,
+            code: 'FORBIDDEN',
+          },
+        );
+      }
+
+      tasks = await getAllTasks({
+        assigned_to: req.user.id,
+      });
+    } else {
+      const teamQuery =
+        req.user.role === 'manager'
+          ? {
+              user_id: req.user.id,
+            }
+          : {};
+
+      [teams, tasks] = await Promise.all([
+        getAllTeams(teamQuery),
+        getAllTasks(),
+      ]);
+
+      const authorizedTeamIds = teams.map((team) => String(team.id)).sort();
+
+      if (query.team_id !== undefined) {
+        const requestedTeamId = String(query.team_id);
+
+        if (
+          req.user.role === 'manager' &&
+          !authorizedTeamIds.includes(requestedTeamId)
+        ) {
+          throw new AppError(
+            'You are not authorized to view analytics for this team.',
+            {
+              statusCode: 403,
+              code: 'FORBIDDEN',
+            },
+          );
+        }
+
+        teamIds = [requestedTeamId];
+
+        teams = teams.filter((team) => String(team.id) === requestedTeamId);
+      } else {
+        teamIds = req.user.role === 'admin' ? undefined : authorizedTeamIds;
+      }
+    }
+
+    const summary = buildTaskSummary(tasks, {
+      teamIds,
+    });
+
+    const deadlines = buildUpcomingDeadlines(tasks, {
+      days: query.days,
+      teamIds,
+    });
+
+    const highlights =
+      req.user.role === 'team_member'
+        ? {
+            teams: [],
+            totals: {
+              teams: 0,
+              members: 0,
+              tasks: 0,
+              overdue: 0,
+              high_priority: 0,
+              high_priority_overdue: 0,
+            },
+          }
+        : buildTeamHighlights(teams, tasks);
+
+    const dashboard = {
+      summary,
+      deadlines,
+      team_highlights: highlights,
+    };
+
+    storeInCache(cacheKey, dashboard, requestContext);
+
+    return res.status(200).json({
+      message: 'Dashboard analytics retrieved successfully.',
+      data: dashboard,
+      meta: {
+        cached: false,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function getTaskSummary(req, res, next) {
   try {
     const query = validateRequest(taskSummaryQuerySchema, req.query);
@@ -208,10 +338,7 @@ export async function getTaskSummary(req, res, next) {
 
 export async function getTeamProductivity(req, res, next) {
   try {
-    const params = validateRequest(
-      teamProductivityParamsSchema,
-      req.params,
-    );
+    const params = validateRequest(teamProductivityParamsSchema, req.params);
 
     const teamId = params.teamId;
 
@@ -350,27 +477,15 @@ export async function getTaskDetailForAnalytics(taskId) {
 
 export async function getTeamReport(req, res, next) {
   try {
-    const params = validateRequest(
-      teamReportParamsSchema,
-      req.params,
-    );
+    const params = validateRequest(teamReportParamsSchema, req.params);
 
-    const query = validateRequest(
-      teamReportQuerySchema,
-      req.query,
-    );
+    const query = validateRequest(teamReportQuerySchema, req.query);
 
     const teamId = params.teamId;
 
-    const authorizedTeamIds = await getAuthorizedTeamIds(
-      req.user,
-    );
+    const authorizedTeamIds = await getAuthorizedTeamIds(req.user);
 
-    assertTeamAccess(
-      req.user,
-      teamId,
-      authorizedTeamIds,
-    );
+    assertTeamAccess(req.user, teamId, authorizedTeamIds);
 
     const cacheKey = [
       'analytics',
@@ -394,10 +509,7 @@ export async function getTeamReport(req, res, next) {
       filters: query,
     };
 
-    const cachedResult = getFromCache(
-      cacheKey,
-      requestContext,
-    );
+    const cachedResult = getFromCache(cacheKey, requestContext);
 
     if (cachedResult !== undefined) {
       return res.status(200).json({
@@ -419,19 +531,14 @@ export async function getTeamReport(req, res, next) {
     const team = teamResponse.data?.team;
 
     if (!team) {
-      throw new AppError(
-        'Laravel returned an invalid team response.',
-        {
-          statusCode: 502,
-          code: 'INVALID_LARAVEL_RESPONSE',
-        },
-      );
+      throw new AppError('Laravel returned an invalid team response.', {
+        statusCode: 502,
+        code: 'INVALID_LARAVEL_RESPONSE',
+      });
     }
 
     const teamMemberIds = new Set(
-      (team.members ?? []).map((member) =>
-        String(member.id),
-      ),
+      (team.members ?? []).map((member) => String(member.id)),
     );
 
     const invalidMemberIds = query.member_ids.filter(
@@ -462,11 +569,7 @@ export async function getTeamReport(req, res, next) {
       priorities: query.priorities,
     });
 
-    storeInCache(
-      cacheKey,
-      report,
-      requestContext,
-    );
+    storeInCache(cacheKey, report, requestContext);
 
     return res.status(200).json({
       message: 'Team report retrieved successfully.',
@@ -482,19 +585,11 @@ export async function getTeamReport(req, res, next) {
 
 export async function getTeamHighlights(req, res, next) {
   try {
-    const authorizedTeamIds =
-      await getAuthorizedTeamIds(req.user);
+    const authorizedTeamIds = await getAuthorizedTeamIds(req.user);
 
-    const userScope = buildUserScope(
-      req.user,
-      authorizedTeamIds,
-    );
+    const userScope = buildUserScope(req.user, authorizedTeamIds);
 
-    const cacheKey = [
-      'analytics',
-      'team-highlights',
-      userScope,
-    ].join(':');
+    const cacheKey = ['analytics', 'team-highlights', userScope].join(':');
 
     const requestContext = {
       analyticsType: 'team_highlights',
@@ -503,15 +598,11 @@ export async function getTeamHighlights(req, res, next) {
       authorizedTeamIds,
     };
 
-    const cachedResult = getFromCache(
-      cacheKey,
-      requestContext,
-    );
+    const cachedResult = getFromCache(cacheKey, requestContext);
 
     if (cachedResult !== undefined) {
       return res.status(200).json({
-        message:
-          'Team highlights retrieved successfully.',
+        message: 'Team highlights retrieved successfully.',
         data: cachedResult,
         meta: {
           cached: true,
@@ -536,25 +627,16 @@ export async function getTeamHighlights(req, res, next) {
         ? teams
         : teams.filter((team) =>
             authorizedTeamIds.some(
-              (teamId) =>
-                String(teamId) === String(team.id),
+              (teamId) => String(teamId) === String(team.id),
             ),
           );
 
-    const highlights = buildTeamHighlights(
-      authorizedTeams,
-      tasks,
-    );
+    const highlights = buildTeamHighlights(authorizedTeams, tasks);
 
-    storeInCache(
-      cacheKey,
-      highlights,
-      requestContext,
-    );
+    storeInCache(cacheKey, highlights, requestContext);
 
     return res.status(200).json({
-      message:
-        'Team highlights retrieved successfully.',
+      message: 'Team highlights retrieved successfully.',
       data: highlights,
       meta: {
         cached: false,
